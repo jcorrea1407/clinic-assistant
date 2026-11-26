@@ -12,7 +12,8 @@
     "check-config": "tsx scripts/check-config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "try": "tsx scripts/try.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
