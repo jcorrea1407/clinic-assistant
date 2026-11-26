@@ -1,0 +1,916 @@
+{
+  "meta": {
+    "clinic": "Upland Physio, Chiro & Massage",
+    "status": "draft — awaiting review (#70)",
+    "drafted": "2026-11-25",
+    "about": "Local copy of Upland's fact sheet, shaped like the planned Webflow CMS collections (ADR 0001). The assistant reads this file until #82 switches it to the live CMS. Upland is a made-up clinic (ADR 0003).",
+    "kinds": {
+      "public-rule": "An Alberta rule from a primary source. sourceUrl is required. Carries over unchanged when a real clinic is onboarded.",
+      "clinic-policy": "Upland's own choice, made up within real NW Calgary ranges. A real clinic replaces these with its own."
+    },
+    "fields": {
+      "reviewBy": "Date after which the line must be rechecked (e.g. Care-First starts 2027-01-01). null = no known expiry.",
+      "internalNote": "For editors only. Never shown on the site or said by the assistant."
+    },
+    "research": "Public rules: docs/reports/alberta-clinic-rules.md (#69). Price ranges: docs/reports/nw-calgary-clinic-prices.md. Both gitignored."
+  },
+  "collections": {
+    "clinicFacts": [
+      {
+        "name": "Clinic name",
+        "slug": "clinic-name",
+        "category": "about",
+        "value": "Upland Physio, Chiro & Massage",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Concept notice",
+        "slug": "concept-notice",
+        "category": "about",
+        "value": "Upland isn't a real clinic. It's a concept site built to show a clinic website and assistant. Messages sent through the assistant go to a demo inbox.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Site-wide banner text (ADR 0003). Remove for a real client."
+      },
+      {
+        "name": "Services",
+        "slug": "services",
+        "category": "about",
+        "value": "Physiotherapy, chiropractic and massage therapy.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Address",
+        "slug": "address",
+        "category": "location",
+        "value": "100 Concept Lane NW, Calgary, AB",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Deliberately fictional (ADR 0003). No postal code, so it can't resolve to a real place."
+      },
+      {
+        "name": "Phone",
+        "slug": "phone",
+        "category": "contact",
+        "value": "403-555-0142",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "555-01xx numbers are reserved for fiction in North America, so this never rings anyone."
+      },
+      {
+        "name": "Email",
+        "slug": "email",
+        "category": "contact",
+        "value": "frontdesk@upland.example",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Placeholder until the personal domain exists (#83); becomes the demo inbox."
+      },
+      {
+        "name": "Reply time",
+        "slug": "reply-time",
+        "category": "contact",
+        "value": "The front desk replies to messages within one business day.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Hours: Monday to Thursday",
+        "slug": "hours-mon-thu",
+        "category": "hours",
+        "value": "7 am to 8 pm",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Hours: Friday",
+        "slug": "hours-fri",
+        "category": "hours",
+        "value": "7 am to 5 pm",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Hours: Saturday",
+        "slug": "hours-sat",
+        "category": "hours",
+        "value": "8 am to 2 pm",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Hours: Sunday and statutory holidays",
+        "slug": "hours-sun",
+        "category": "hours",
+        "value": "Closed",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Parking",
+        "slug": "parking",
+        "category": "location",
+        "value": "Free parking in the lot in front of the clinic, including two accessible stalls by the entrance.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Transit",
+        "slug": "transit",
+        "category": "location",
+        "value": "A bus stop is a two-minute walk away. Use Calgary Transit's trip planner for routes.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Kept generic because the address is fictional; naming a real route or station would place it."
+      },
+      {
+        "name": "Accessibility",
+        "slug": "accessibility",
+        "category": "location",
+        "value": "The clinic is on the ground floor with a step-free entrance and an accessible washroom.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Massage therapist credentials",
+        "slug": "rmt-credentials",
+        "category": "about",
+        "value": "Upland's massage therapists are registered massage therapists (RMTs) with a recognized massage association, and hold a City of Calgary massage licence.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Calgary's licence requirement itself is a public rule (FAQ massage-regulation)."
+      },
+      {
+        "name": "Languages",
+        "slug": "languages",
+        "category": "about",
+        "value": "English",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Per-practitioner languages live on the Practitioners collection."
+      },
+      {
+        "name": "Age",
+        "slug": "age",
+        "category": "policies",
+        "value": "Upland sees adults and teens aged 14 and over. Anyone under 18 comes to their first visit with a parent or guardian.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Consent rules for minors weren't researched; this is a conservative house rule, not a legal statement."
+      },
+      {
+        "name": "Price: physiotherapy first visit (60 min)",
+        "slug": "price-physio-first",
+        "category": "prices",
+        "value": "$140",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Range seen: $110–$150 (NW clinic $150)."
+      },
+      {
+        "name": "Price: physiotherapy follow-up (30 min)",
+        "slug": "price-physio-follow-up",
+        "category": "prices",
+        "value": "$95",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Range seen: $85–$95."
+      },
+      {
+        "name": "Price: chiropractic first visit (45 min, exam and first treatment)",
+        "slug": "price-chiro-first",
+        "category": "prices",
+        "value": "$130",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Range seen: $110–$140 (NW $130–$140)."
+      },
+      {
+        "name": "Price: chiropractic follow-up (15 min)",
+        "slug": "price-chiro-follow-up",
+        "category": "prices",
+        "value": "$70",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Range seen: $55–$85 (NW $60–$66)."
+      },
+      {
+        "name": "Price: massage therapy (60 min)",
+        "slug": "price-massage-60",
+        "category": "prices",
+        "value": "$115 + GST",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Range seen: $95–$120."
+      },
+      {
+        "name": "Price: massage therapy (90 min)",
+        "slug": "price-massage-90",
+        "category": "prices",
+        "value": "$160 + GST",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Range seen: $135–$165."
+      },
+      {
+        "name": "GST on physiotherapy and chiropractic",
+        "slug": "gst-physio-chiro",
+        "category": "billing",
+        "value": "Physiotherapy and chiropractic services are GST-exempt.",
+        "kind": "public-rule",
+        "sourceTitle": "Excise Tax Act, Schedule V, Part II, s7",
+        "sourceUrl": "https://laws-lois.justice.gc.ca/eng/acts/E-15/section-sched200860.html",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "GST on massage therapy",
+        "slug": "gst-massage",
+        "category": "billing",
+        "value": "Upland charges GST on massage therapy.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Massage isn't on the exempt list, but charging GST also depends on the clinic being GST-registered, so this is policy."
+      },
+      {
+        "name": "Payment methods",
+        "slug": "payment-methods",
+        "category": "billing",
+        "value": "Debit, Visa, Mastercard and American Express. Payment is due at the end of each visit for any amount your plan doesn't cover.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "How direct billing works",
+        "slug": "direct-billing-how",
+        "category": "billing",
+        "value": "With direct billing, the clinic sends the claim to your insurer and you pay only the part your plan doesn't cover.",
+        "kind": "public-rule",
+        "sourceTitle": "Alberta Blue Cross, Health services providers FAQ",
+        "sourceUrl": "https://www.ab.bluecross.ca/pdfs/provider-faq.pdf",
+        "reviewBy": null,
+        "internalNote": "Also stated by TELUS Health eClaims: https://go.telushealth.com/hubfs/eclaims/register/index.html"
+      },
+      {
+        "name": "Insurers Upland direct bills",
+        "slug": "direct-billing-insurers",
+        "category": "billing",
+        "value": "Alberta Blue Cross, Canada Life, ClaimSecure, Desjardins, Green Shield, iA Financial Group, Manulife and Sun Life. Coverage depends on your plan.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Limited to insurers whose own pages show direct billing: Alberta Blue Cross (provider FAQ); Canada Life, ClaimSecure, Desjardins, iA, Manulife (TELUS eClaims); Sun Life (sunlife.ca eClaims, lists physio, chiro, RMT); Green Shield (providerConnect; its FAQ names chiro and massage, physio not seen). Medavie not confirmed, left out."
+      },
+      {
+        "name": "Fees and insurance",
+        "slug": "fees-same-for-everyone",
+        "category": "billing",
+        "value": "Upland charges the same fee whether you pay yourself or your insurance pays.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Required for chiropractors (CCOA Standards of Practice SP 2.1); applied clinic-wide as policy."
+      },
+      {
+        "name": "Referral policy",
+        "slug": "referral-policy",
+        "category": "policies",
+        "value": "Upland doesn't require a doctor's referral for any service.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Physio no-referral is a public rule (see FAQ). Chiro and massage no-referral wasn't confirmed as law, so the clinic-wide line stays policy."
+      },
+      {
+        "name": "Cancellation policy",
+        "slug": "cancellation",
+        "category": "policies",
+        "value": "Please give at least 24 hours' notice to cancel or move a visit. Late cancellations and missed visits are charged half the visit fee.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "WCB provider",
+        "slug": "wcb-provider",
+        "category": "billing",
+        "value": "Upland is a WCB-Alberta contracted provider for physiotherapy and chiropractic, and bills WCB directly.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "A choice for the concept. Non-contracted providers need WCB pre-approval, which would make the WCB answers weaker."
+      },
+      {
+        "name": "Car-accident claims",
+        "slug": "mva-policy",
+        "category": "billing",
+        "value": "Upland treats car-accident injuries and bills your auto insurer directly.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": "2027-01-01",
+        "internalNote": "From 2027-01-01 the physios and the chiropractor must have attested to the Care-First Program of Care materials to bill it (Guideline 04-2026). Assume they have."
+      },
+      {
+        "name": "AHS-funded physiotherapy",
+        "slug": "ahs-funded",
+        "category": "billing",
+        "value": "Upland isn't an AHS-funded physiotherapy clinic.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Red-flag message",
+        "slug": "red-flag-message",
+        "category": "safety",
+        "value": "I can't help with this here, and it may need urgent care. If there's an immediate threat to someone's life, health or safety, call 911 now. If you're not sure where to go, call Health Link at 811. Registered nurses answer 24/7, and it's free and confidential.",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, When to call 911; Primary Care Alberta, 811 Health Link",
+        "sourceUrl": "https://www.alberta.ca/when-to-call-911",
+        "reviewBy": null,
+        "internalNote": "Fixed text, never paraphrased by the model. 811 wording: https://www.primarycarealberta.ca/page14176.aspx"
+      }
+    ],
+    "concerns": [
+      {
+        "name": "Back and neck pain",
+        "slug": "back-and-neck",
+        "summary": "Stiffness, aches or pain in the back or neck, whether it came on suddenly or has built up over time, including after a car accident.",
+        "commonExamples": "Low back pain, a stiff neck from desk work, pain after lifting, whiplash.",
+        "whoTreats": [
+          "priya-nair",
+          "daniel-reyes"
+        ],
+        "startWith": "Either a chiropractor or a physiotherapist. Both assess you first and explain your options.",
+        "kind": "clinic-policy",
+        "internalNote": null
+      },
+      {
+        "name": "Sports injuries",
+        "slug": "sports-injuries",
+        "summary": "Sprains, strains and overuse injuries from sport, running or training, and getting back to activity afterwards.",
+        "commonExamples": "Ankle sprains, knee pain when running, shoulder pain from throwing or lifting.",
+        "whoTreats": [
+          "maya-okafor",
+          "liam-fraser"
+        ],
+        "startWith": "A physiotherapist. Massage can be added once you've been assessed.",
+        "kind": "clinic-policy",
+        "internalNote": null
+      },
+      {
+        "name": "Recovery after surgery",
+        "slug": "recovery-after-surgery",
+        "summary": "Rehabilitation after orthopaedic surgery, such as a joint replacement or a ligament repair, following your surgeon's instructions.",
+        "commonExamples": "Knee or hip replacement, ACL repair, shoulder surgery.",
+        "whoTreats": [
+          "daniel-reyes"
+        ],
+        "startWith": "A physiotherapist. Bring any instructions from your surgeon.",
+        "kind": "clinic-policy",
+        "internalNote": "AHS funds physio after a fracture or orthopaedic surgery at listed clinics (public rule, FAQ). Upland isn't one."
+      },
+      {
+        "name": "Headaches and jaw pain",
+        "slug": "headaches-and-jaw",
+        "summary": "Headaches linked to neck tension, and jaw pain or clicking.",
+        "commonExamples": "Tension headaches, jaw pain when chewing, a jaw that clicks or locks.",
+        "whoTreats": [
+          "priya-nair",
+          "maya-okafor",
+          "hannah-brooks"
+        ],
+        "startWith": "A chiropractor or a physiotherapist. A sudden, severe headache is not a booking question: see the red-flag triggers.",
+        "kind": "clinic-policy",
+        "internalNote": null
+      },
+      {
+        "name": "Muscle tension and stress",
+        "slug": "muscle-tension-and-stress",
+        "summary": "Tight, sore muscles from work, training or everyday stress.",
+        "commonExamples": "Tight shoulders from desk work, sore legs after training, general tension.",
+        "whoTreats": [
+          "hannah-brooks",
+          "liam-fraser"
+        ],
+        "startWith": "A massage therapist.",
+        "kind": "clinic-policy",
+        "internalNote": null
+      }
+    ],
+    "practitioners": [
+      {
+        "name": "Maya Okafor",
+        "slug": "maya-okafor",
+        "honorific": null,
+        "profession": "physiotherapist",
+        "displayTitle": "Physiotherapist",
+        "areasOfPractice": "Sports injuries and getting back to running; jaw pain.",
+        "bio": "Maya works with people who want to get back to sport or training after an injury. She assesses how you move, explains what she finds and builds an exercise plan with you.",
+        "concerns": [
+          "sports-injuries",
+          "headaches-and-jaw"
+        ],
+        "languages": "English",
+        "bookingUrl": "/book/maya-okafor",
+        "portraitAlt": "AI-generated portrait of Maya Okafor, physiotherapist · not a real person",
+        "kind": "clinic-policy",
+        "internalNote": null
+      },
+      {
+        "name": "Daniel Reyes",
+        "slug": "daniel-reyes",
+        "honorific": null,
+        "profession": "physiotherapist",
+        "displayTitle": "Physiotherapist",
+        "areasOfPractice": "Recovery after surgery; back and neck pain.",
+        "bio": "Daniel works with people recovering from surgery and people with ongoing back or neck pain. He follows your surgeon's instructions and sets goals with you for everyday activities.",
+        "concerns": [
+          "recovery-after-surgery",
+          "back-and-neck"
+        ],
+        "languages": "English",
+        "bookingUrl": "/book/daniel-reyes",
+        "portraitAlt": "AI-generated portrait of Daniel Reyes, physiotherapist · not a real person",
+        "kind": "clinic-policy",
+        "internalNote": null
+      },
+      {
+        "name": "Priya Nair",
+        "slug": "priya-nair",
+        "honorific": "Dr.",
+        "profession": "chiropractor",
+        "displayTitle": "Chiropractor",
+        "areasOfPractice": "Back and neck pain; headaches.",
+        "bio": "Priya assesses back and neck problems and headaches linked to the neck. She explains her findings and treatment options before starting, and shows you exercises to do at home.",
+        "concerns": [
+          "back-and-neck",
+          "headaches-and-jaw"
+        ],
+        "languages": "English",
+        "bookingUrl": "/book/priya-nair",
+        "portraitAlt": "AI-generated portrait of Dr. Priya Nair, chiropractor · not a real person",
+        "kind": "clinic-policy",
+        "internalNote": "Always written 'Dr. Priya Nair, chiropractor', never 'Dr.' alone (HPA s128(7); CCOA SP 1.3)."
+      },
+      {
+        "name": "Hannah Brooks",
+        "slug": "hannah-brooks",
+        "honorific": null,
+        "profession": "massage-therapist",
+        "displayTitle": "Registered massage therapist (RMT)",
+        "areasOfPractice": "Muscle tension and stress; neck, shoulder and jaw tension.",
+        "bio": "Hannah works with people carrying tension from desk work or stress. She asks what you'd like from the session and adjusts the pressure to suit you.",
+        "concerns": [
+          "muscle-tension-and-stress",
+          "headaches-and-jaw"
+        ],
+        "languages": "English",
+        "bookingUrl": "/book/hannah-brooks",
+        "portraitAlt": "AI-generated portrait of Hannah Brooks, registered massage therapist · not a real person",
+        "kind": "clinic-policy",
+        "internalNote": "RMT is an association credential, not a provincial title: massage isn't regulated in Alberta. The assistant never implies a regulator. A real clinic names each RMT's association."
+      },
+      {
+        "name": "Liam Fraser",
+        "slug": "liam-fraser",
+        "honorific": null,
+        "profession": "massage-therapist",
+        "displayTitle": "Registered massage therapist (RMT)",
+        "areasOfPractice": "Sports and training recovery.",
+        "bio": "Liam works with runners, climbers and people who train regularly. He often works alongside the physiotherapists once a patient has been assessed.",
+        "concerns": [
+          "sports-injuries",
+          "muscle-tension-and-stress"
+        ],
+        "languages": "English",
+        "bookingUrl": "/book/liam-fraser",
+        "portraitAlt": "AI-generated portrait of Liam Fraser, registered massage therapist · not a real person",
+        "kind": "clinic-policy",
+        "internalNote": "RMT is an association credential, not a provincial title: massage isn't regulated in Alberta. The assistant never implies a regulator. A real clinic names each RMT's association."
+      }
+    ],
+    "faq": [
+      {
+        "name": "Do I need a doctor's referral to see a physiotherapist?",
+        "slug": "referral-physio",
+        "category": "referrals",
+        "answer": "No. In Alberta you can see a physiotherapist without a doctor's referral. Some benefit plans want one before they pay, so check your plan.",
+        "kind": "public-rule",
+        "sourceTitle": "College of Physiotherapists of Alberta, Being a savvy physiotherapy client",
+        "sourceUrl": "https://www.cpta.ab.ca/for-the-public/blog/being-a-savvy-physiotherapy-client/",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Do I need a referral for chiropractic or massage?",
+        "slug": "referral-chiro-massage",
+        "category": "referrals",
+        "answer": "Not for Upland. We don't require a doctor's referral for any service. Your benefit plan may have its own rules, so check it before your visit.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Not stated as Alberta law: only an association source was found for chiro."
+      },
+      {
+        "name": "Which insurers do you bill directly?",
+        "slug": "direct-billing-insurers",
+        "category": "billing",
+        "answer": "Alberta Blue Cross, Canada Life, ClaimSecure, Desjardins, Green Shield, iA Financial Group, Manulife and Sun Life. Coverage depends on your plan.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Is my visit covered by my benefits?",
+        "slug": "coverage-depends",
+        "category": "billing",
+        "answer": "It depends on your plan. Check your plan's coverage for physiotherapy, chiropractic or massage, or ask your insurer. Our front desk can't confirm what your plan pays.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Any plan-specific question goes to the front desk or the insurer, never answered by the assistant."
+      },
+      {
+        "name": "Does Alberta Health Care cover physio, chiro or massage?",
+        "slug": "ahcip-coverage",
+        "category": "billing",
+        "answer": "Alberta Health Care (AHCIP) doesn't cover chiropractic or massage therapy. Physiotherapy is publicly funded only through Alberta Health Services programs.",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, Health care services covered in Alberta (AHCIP)",
+        "sourceUrl": "https://www.alberta.ca/ahcip-what-is-covered",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Can I get publicly funded physio after a fracture or surgery?",
+        "slug": "ahs-funded-physio",
+        "category": "billing",
+        "answer": "Alberta Health Services funds physiotherapy at listed community clinics if you've had a fracture or orthopaedic surgery in the last 12 weeks, with no referral needed. AHS lists those clinics on its website.",
+        "kind": "public-rule",
+        "sourceTitle": "Alberta Health Services, Have a Physical Concern & Need Physiotherapy?",
+        "sourceUrl": "https://www.albertahealthservices.ca/rehab/Page17783.aspx",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Is Upland an AHS-funded clinic?",
+        "slug": "upland-ahs",
+        "category": "billing",
+        "answer": "No. Upland is a private clinic, so AHS-funded physiotherapy isn't available here.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "I'm a senior. Is chiropractic covered?",
+        "slug": "seniors-chiro",
+        "category": "billing",
+        "answer": "If you're on Alberta's Coverage for Seniors program, it pays up to $25 per chiropractic visit, to a maximum of $200 per person each benefit year.",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, Coverage for Seniors program",
+        "sourceUrl": "https://www.alberta.ca/coverage-for-seniors-program",
+        "reviewBy": null,
+        "internalNote": "The 'benefit year' isn't defined on the page; don't explain it."
+      },
+      {
+        "name": "I'm on AISH. Can I get help with the cost?",
+        "slug": "aish",
+        "category": "billing",
+        "answer": "AISH may help with the cost of physiotherapy, chiropractic or massage through its health-related personal benefits. There are conditions, and AISH decides who qualifies.",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, What you get with AISH",
+        "sourceUrl": "https://www.alberta.ca/aish-what-you-get",
+        "reviewBy": null,
+        "internalNote": "Income Support coverage is unconfirmed: hand off."
+      },
+      {
+        "name": "I was hurt at work. Does WCB cover physio or chiro?",
+        "slug": "wcb-first-visit",
+        "category": "wcb",
+        "answer": "Once you've reported the injury to WCB-Alberta, WCB pays for your first physiotherapy or chiropractic assessment and treatment, whatever it later decides about your claim. After that, WCB has to approve further treatment.",
+        "kind": "public-rule",
+        "sourceTitle": "WCB-Alberta, Community treatments procedure",
+        "sourceUrl": "https://wcb.ab.ca/about-wcb/procedures-manual/community-treatments.html",
+        "reviewBy": null,
+        "internalNote": "Never quote WCB visit numbers; they're internal procedure."
+      },
+      {
+        "name": "Do I pay anything for WCB visits?",
+        "slug": "wcb-billing",
+        "category": "wcb",
+        "answer": "Not for treatment WCB has approved. The clinic bills WCB, and no part of an approved service is billed to you or your employer.",
+        "kind": "public-rule",
+        "sourceTitle": "WCB-Alberta, Physiotherapy Contract Reference Guide",
+        "sourceUrl": "https://www.wcb.ab.ca/assets/pdfs/providers/PTContractReferenceManual.pdf",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "What should I bring for a WCB visit?",
+        "slug": "wcb-bring",
+        "category": "wcb",
+        "answer": "Bring your WCB claim number if you have one. If you haven't reported your injury yet, tell the front desk and we'll help you get started.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Does WCB cover massage therapy?",
+        "slug": "wcb-massage",
+        "category": "wcb",
+        "answer": "No. WCB-Alberta doesn't cover massage therapy on its own, because massage therapy isn't a regulated profession in Alberta.",
+        "kind": "public-rule",
+        "sourceTitle": "WCB-Alberta, Non-standard medical aid treatment decision procedure",
+        "sourceUrl": "https://www.wcb.ab.ca/about-wcb/procedures-manual/medical-and-non-medical-services-not-normally-authorized.html",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Can I come in after a car accident?",
+        "slug": "mva-visit",
+        "category": "car-accidents",
+        "answer": "Yes. Upland treats car-accident injuries and bills your auto insurer directly. What's covered depends on the date of your accident, so our front desk will confirm the details with you.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": "2027-01-01",
+        "internalNote": "Visit counts, forms and massage after an accident are always handed to the front desk."
+      },
+      {
+        "name": "Is Alberta's car insurance changing?",
+        "slug": "care-first",
+        "category": "car-accidents",
+        "answer": "Yes. Starting 1 January 2027, Alberta's Care-First system covers injuries from a car accident regardless of who is at fault.",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, Care-First auto insurance",
+        "sourceUrl": "https://www.alberta.ca/care-first-auto-insurance",
+        "reviewBy": "2027-01-01",
+        "internalNote": "Reword after 2027-01-01 ('Since 1 January 2027 …'). The in-force order wasn't found (#69 flag)."
+      },
+      {
+        "name": "Is GST charged?",
+        "slug": "gst",
+        "category": "billing",
+        "answer": "Physiotherapy and chiropractic are GST-exempt. Massage therapy isn't on the exempt list.",
+        "kind": "public-rule",
+        "sourceTitle": "Excise Tax Act, Schedule V, Part II, s7",
+        "sourceUrl": "https://laws-lois.justice.gc.ca/eng/acts/E-15/section-sched200860.html",
+        "reviewBy": null,
+        "internalNote": "Whether Upland charges GST on massage is policy (clinic fact gst-massage)."
+      },
+      {
+        "name": "Is massage therapy regulated in Alberta?",
+        "slug": "massage-regulation",
+        "category": "about",
+        "answer": "Massage therapy isn't a regulated health profession in Alberta, so there's no provincial college. The City of Calgary requires massage practitioners to hold a city licence, which needs membership in a recognized massage association.",
+        "kind": "public-rule",
+        "sourceTitle": "City of Calgary, Massage bylaw changes",
+        "sourceUrl": "https://www.calgary.ca/csps/abs/compliance-services/massage-bylaw-changes.html",
+        "reviewBy": null,
+        "internalNote": "Regulation status source: alis massage therapist profile, https://alis.alberta.ca/occinfo/occupations-in-alberta/occupation-profiles/massage-therapist/. An application to regulate has been pending since Oct 2024."
+      },
+      {
+        "name": "Do you offer free assessments or consultations?",
+        "slug": "free-assessments",
+        "category": "billing",
+        "answer": "No. Alberta's physiotherapy college doesn't allow physiotherapists to offer free assessments or consultations.",
+        "kind": "public-rule",
+        "sourceTitle": "College of Physiotherapists of Alberta, Standards of Practice: Advertising",
+        "sourceUrl": "https://www.cpta.ab.ca/for-physiotherapists/regulatory-expectations/standards-of-practice/advertising/",
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "How much does a visit cost?",
+        "slug": "prices",
+        "category": "billing",
+        "answer": "Physiotherapy: $140 for a first visit (60 min), $95 for a follow-up (30 min). Chiropractic: $130 for a first visit (45 min), $70 for a follow-up (15 min). Massage therapy: $115 for 60 minutes, $160 for 90 minutes, plus GST.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Must match the price clinic facts. Generate from them in #72 rather than duplicating."
+      },
+      {
+        "name": "What happens at a first visit?",
+        "slug": "first-visit",
+        "category": "first-visit",
+        "answer": "Your practitioner asks about your concern and your health history, assesses you, and explains what they find and your options before any treatment. You decide together what to do next.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "What should I wear and bring?",
+        "slug": "what-to-bring",
+        "category": "first-visit",
+        "answer": "Wear comfortable clothes you can move in, and shorts if your concern is in your legs. Bring your benefit plan details, and a WCB or auto insurance claim number if you have one. Please arrive 10 minutes early to fill in the intake form, or complete it from the email we send when you book.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Who should I book with?",
+        "slug": "who-to-book",
+        "category": "first-visit",
+        "answer": "Start from your concern. Each concern page shows who treats it and who to start with. If you're still not sure, ask the assistant or the front desk.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "What's your cancellation policy?",
+        "slug": "cancellation",
+        "category": "policies",
+        "answer": "Please give at least 24 hours' notice to cancel or move a visit. Late cancellations and missed visits are charged half the visit fee.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": "Must match clinic fact cancellation."
+      },
+      {
+        "name": "Where do I park?",
+        "slug": "parking",
+        "category": "visit-us",
+        "answer": "Parking is free in the lot in front of the clinic, with two accessible stalls by the entrance.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      },
+      {
+        "name": "Is the clinic accessible?",
+        "slug": "accessible",
+        "category": "visit-us",
+        "answer": "Yes. The clinic is on the ground floor with a step-free entrance and an accessible washroom.",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "reviewBy": null,
+        "internalNote": null
+      }
+    ],
+    "redFlagTriggers": [
+      {
+        "name": "Chest pain or trouble breathing",
+        "slug": "chest-pain",
+        "examplePhrases": "chest pain, chest tightness, can't breathe, short of breath at rest",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, When to call 911",
+        "sourceUrl": "https://www.alberta.ca/when-to-call-911",
+        "internalNote": "Breathing trouble isn't in alberta.ca's example list; added as an obvious emergency. Confirm."
+      },
+      {
+        "name": "Heavy bleeding or a major injury",
+        "slug": "major-injury",
+        "examplePhrases": "won't stop bleeding, bad accident just happened, bone sticking out, limb looks out of shape",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, When to call 911",
+        "sourceUrl": "https://www.alberta.ca/when-to-call-911",
+        "internalNote": null
+      },
+      {
+        "name": "Loss of consciousness, seizure or stroke signs",
+        "slug": "stroke-seizure",
+        "examplePhrases": "passed out, fainted, seizure, face drooping, slurred speech, sudden weakness on one side",
+        "kind": "public-rule",
+        "sourceTitle": "Government of Alberta, When to call 911",
+        "sourceUrl": "https://www.alberta.ca/when-to-call-911",
+        "internalNote": null
+      },
+      {
+        "name": "Bladder or bowel changes with back pain",
+        "slug": "cauda-equina",
+        "examplePhrases": "can't control my bladder, can't pee, numb between my legs, numbness in the groin with back pain",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "internalNote": "Clinical red flag, not an Alberta public rule. A real clinic's practitioners approve this list."
+      },
+      {
+        "name": "New or worsening weakness or numbness",
+        "slug": "progressive-weakness",
+        "examplePhrases": "leg keeps getting weaker, foot dragging, arm going numb and getting worse",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "internalNote": "Clinical red flag. Practitioner review needed."
+      },
+      {
+        "name": "Sudden severe headache or head injury",
+        "slug": "severe-headache",
+        "examplePhrases": "worst headache of my life, sudden thunderclap headache, hit my head and now vomiting or confused",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "internalNote": "Clinical red flag. Practitioner review needed."
+      },
+      {
+        "name": "Back or neck pain with fever or feeling very unwell",
+        "slug": "pain-with-fever",
+        "examplePhrases": "back pain and a fever, stiff neck and fever, pain with chills and night sweats",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "internalNote": "Clinical red flag. Practitioner review needed."
+      },
+      {
+        "name": "Thoughts of suicide or self-harm",
+        "slug": "self-harm",
+        "examplePhrases": "want to die, thinking of hurting myself, don't want to be here anymore",
+        "kind": "clinic-policy",
+        "sourceTitle": null,
+        "sourceUrl": null,
+        "internalNote": "Covered by 911 ('immediate threat to someone's life'). No separate crisis line, by decision (2026-11-25)."
+      }
+    ]
+  }
+}

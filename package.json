@@ -1,0 +1,27 @@
+{
+  "name": "clinic-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A clinic front-desk assistant with per-client config and a swappable model provider. Deployed as Vercel functions.",
+  "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "build": "tsc --noEmit && tsx scripts/check-config.ts",
+    "check-config": "tsx scripts/check-config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12"
+  }
+}
