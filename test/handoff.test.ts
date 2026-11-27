@@ -106,6 +106,8 @@ describe("POST /api/handoff", () => {
     ["a bad email", { ...visitor, email: "sam@" }],
     ["a phone with letters", { ...visitor, phone: "call me maybe" }],
     ["a name with a line break", { ...visitor, name: "Sam\r\nBcc: x@y.z" }],
+    ["a name with a Unicode line separator", { ...visitor, name: "Sam Urgent" }],
+    ["no name", { ...visitor, name: undefined }],
     ["an empty question", { ...visitor, question: "   " }],
     ["a question over 2,000 characters", { ...visitor, question: "x".repeat(2001) }],
     ["an unknown field", { ...visitor, notes: "hi" }],
@@ -115,6 +117,21 @@ describe("POST /api/handoff", () => {
     const response = await createHandoffHandler({ transport, env: {} }).fetch(post(body));
     expect(response.status).toBe(400);
     expect(sent).toHaveLength(0);
+  });
+
+  it("treats blank optional fields, as an HTML form sends them, as not given", async () => {
+    const { transport, sent } = fakeTransport();
+    const body = { ...visitor, email: " ", preferredTime: "", practitioner: "", website: "" };
+    const response = await createHandoffHandler({ transport, env: {} }).fetch(post(body));
+    expect(response.status).toBe(200);
+    expect(sent[0]!.replyTo).toBeUndefined();
+    expect(sent[0]!.subject).toBe("[No practitioner] Website question from Sam Visitor");
+  });
+
+  it("trims an autofilled email", async () => {
+    const { transport, sent } = fakeTransport();
+    await createHandoffHandler({ transport, env: {} }).fetch(post({ ...visitor, email: " sam.visitor@example.com " }));
+    expect(sent[0]!.replyTo).toBe("sam.visitor@example.com");
   });
 
   it("returns 404 for an unknown client", async () => {
@@ -128,10 +145,15 @@ describe("POST /api/handoff", () => {
     expect(response.status).toBe(405);
   });
 
-  it("gives a bot that fills the hidden field a normal-looking success, and sends nothing", async () => {
+  it.each([
+    ["a valid body", { ...visitor, website: "spam.example" }],
+    ["an unknown client and practitioner", { ...visitor, client: "nope", practitioner: "x", website: "spam.example" }],
+    ["a non-string honeypot", { website: 12345 }],
+  ])("gives a bot that fills the hidden field a success with %s, and sends nothing", async (_name, body) => {
     const { transport, sent } = fakeTransport();
-    const response = await createHandoffHandler({ transport, env: {} }).fetch(post({ ...visitor, website: "spam.example" }));
+    const response = await createHandoffHandler({ transport, env: {} }).fetch(post(body));
     expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true });
     expect(sent).toHaveLength(0);
     expectNoVisitorDataLogged();
   });
@@ -148,8 +170,12 @@ describe("POST /api/handoff", () => {
     expectNoVisitorDataLogged();
   });
 
-  it("fails closed on Vercel when RESEND_API_KEY is missing", async () => {
-    const response = await createHandoffHandler({ env: { VERCEL: "1" } }).fetch(post(visitor));
+  it.each([
+    ["on Vercel", { VERCEL: "1" }],
+    ["anywhere else", {}],
+    ["on Vercel even with MAIL_LOG_ONLY", { VERCEL: "1", MAIL_LOG_ONLY: "1" }],
+  ])("fails closed %s when RESEND_API_KEY is missing", async (_name, env) => {
+    const response = await createHandoffHandler({ env }).fetch(post(visitor));
     expect(response.status).toBe(502);
     expect(logged.join("\n")).toContain("RESEND_API_KEY is not set");
     expectNoVisitorDataLogged();
@@ -157,12 +183,15 @@ describe("POST /api/handoff", () => {
 });
 
 describe("mail transport from env", () => {
-  it("prints locally without a key", async () => {
-    expect(await mailTransportFromEnv({})).toBe(logTransport);
+  it("prints instead of sending only when MAIL_LOG_ONLY=1, off Vercel", async () => {
+    expect(await mailTransportFromEnv({ MAIL_LOG_ONLY: "1" })).toBe(logTransport);
   });
 
-  it("refuses to send on Vercel without a key", async () => {
-    const transport = await mailTransportFromEnv({ VERCEL: "1" });
+  it.each([
+    ["no settings", {}],
+    ["Vercel", { VERCEL: "1" }],
+  ])("refuses to send without a key, with %s", async (_name, env) => {
+    const transport = await mailTransportFromEnv(env);
     await expect(transport.send({ to: "a@b.c", from: "a@b.c", subject: "s", text: "t" })).rejects.toThrow(MailError);
   });
 });

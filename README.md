@@ -80,15 +80,17 @@ The widget always shows an **Ask the front desk** button. It opens a short form 
 }
 ```
 
-`consent` must be the boolean `true`, checked on the server, not just in the widget. `email` or `phone` is required, and the other fields are optional. `practitioner` is the slug the chat suggested, and it must exist in the fact sheet. `website` is a honeypot hidden from people: if a bot fills it, it gets a normal-looking success and nothing is sent. Name, phone and preferred time must be single lines; the question can be up to 2,000 characters.
+Required: `client`, `consent`, `question` and `name`, plus `email` or `phone`. Optional: `preferredTime` and `practitioner`. `consent` must be the boolean `true`, checked on the server, not just in the widget. `practitioner` is the slug the chat suggested, and it must exist in the fact sheet. A blank optional field (`""`, as a form sends it) counts as not given. Name, phone and preferred time must be single lines; the question can be up to 2,000 characters.
+
+`website` is a honeypot hidden from people. It is checked before anything else, so a bot that fills it always gets a success, whatever else it sent, and nothing is sent.
 
 **Response.** `200 { ok: true, message }`, where `message` is the confirmation to show: "Sent. The front desk replies to messages within one business day. They can help with booking and questions about the clinic, not treatment advice." If sending fails, it returns `502 { ok: false, error }` with a fixed message giving the clinic's phone number. Bad input gets a `400`.
 
 **The email** goes to the client's `frontDeskInbox`. Its subject is tagged with the suggested practitioner, as in `[Dr. Priya Nair, chiropractor] Website question from Sam`, or `[No practitioner] …`. Reply-to is the visitor's email, so the front desk answers by replying. The footer says it was sent with the visitor's consent and isn't stored.
 
-**Nothing is stored, and logs carry no visitor data.** Each handoff logs only `{ client, ok, emailId }`, and a test fails if any submitted field reaches the logs.
+**Nothing is stored, and logs carry no visitor data.** Each handoff logs one line of `{ client, ok, emailId }`, plus `reason` (an error name, never content) on a failure or `skipped: "honeypot"` for a bot. A test fails if any submitted field reaches the logs.
 
-**MailTransport.** Only `src/mail/resend.ts` imports the Resend SDK. Without `RESEND_API_KEY`, a local run prints the email to the terminal instead, and a Vercel deploy refuses to send, so a visitor is never told a message went when it didn't.
+**MailTransport.** Only `src/mail/resend.ts` imports the Resend SDK. Without `RESEND_API_KEY`, it refuses to send anywhere, so a visitor is never told a message went when it didn't. For local development, `MAIL_LOG_ONLY=1` prints the email to the terminal instead; it is ignored on Vercel.
 
 Rate limiting will be set with Vercel's firewall when the site ships, and CORS when the widget is built.
 
@@ -107,7 +109,8 @@ npm run build     # type-check, then validate every client config and fact sheet
 | Variable | Where | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Vercel (Preview and Production) | Claude API key. Never commit it. |
-| `RESEND_API_KEY` | Vercel (Preview and Production) | Sends handoff emails. Without it, a deploy refuses handoffs and a local run prints them. |
+| `RESEND_API_KEY` | Vercel (Preview and Production) | Sends handoff emails. Without it, handoffs are refused. |
+| `MAIL_LOG_ONLY` | Local only | `1` prints handoff emails to the terminal instead of sending them. Ignored on Vercel. |
 | `MAIL_FROM` | Vercel, optional | The sender, as `Name <address>` on a domain verified in Resend. Defaults to Resend's test sender, `onboarding@resend.dev`. |
 | `HANDOFF_TO_OVERRIDE` | Vercel, optional | Sends every handoff to this address instead of the client's `frontDeskInbox`. For the demo, while the inboxes are placeholders. |
 

@@ -13,6 +13,16 @@ import { HandoffBody } from "./schema.js";
 
 type Env = Record<string, string | undefined>;
 
+/** The honeypot field is filled with anything at all. */
+function isBot(json: unknown): boolean {
+  if (!json || typeof json !== "object" || !("website" in json)) return false;
+  const value = json.website;
+  return value !== undefined && value !== null && value !== "";
+}
+
+/** What a bot sees: shaped like the real confirmation, without looking anything up. */
+const botConfirmation = "Sent. The front desk will reply soon.";
+
 /** Resend's shared test sender. It only delivers to the Resend account's own address. */
 const defaultFrom = "Clinic assistant <onboarding@resend.dev>";
 
@@ -32,6 +42,12 @@ export function createHandoffHandler(options: { transport?: MailTransport; env?:
       } catch {
         return Response.json({ error: "Body must be JSON" }, { status: 400 });
       }
+      // Honeypot first, so a bot gets the same success whatever else it sent.
+      if (isBot(json)) {
+        console.log(JSON.stringify({ client: null, ok: true, emailId: null, skipped: "honeypot" }));
+        return Response.json({ ok: true, message: botConfirmation });
+      }
+
       const body = HandoffBody.safeParse(json);
       if (!body.success) {
         return Response.json({ error: z.prettifyError(body.error) }, { status: 400 });
@@ -54,11 +70,6 @@ export function createHandoffHandler(options: { transport?: MailTransport; env?:
         practitioner = practitionerLabel(p);
       }
 
-      if (body.data.website) {
-        console.log(JSON.stringify({ client: config.id, ok: true, emailId: null, skipped: "honeypot" }));
-        return Response.json({ ok: true, message: confirmation(facts) });
-      }
-
       const message = buildHandoffEmail({
         config,
         request: body.data,
@@ -68,7 +79,11 @@ export function createHandoffHandler(options: { transport?: MailTransport; env?:
       });
 
       try {
-        transport ??= mailTransportFromEnv(env);
+        // A failed setup is not cached, so the next request tries again.
+        transport ??= mailTransportFromEnv(env).catch((error: unknown) => {
+          transport = undefined;
+          throw error;
+        });
         const { id } = await (await transport).send(message);
         console.log(JSON.stringify({ client: config.id, ok: true, emailId: id }));
         return Response.json({ ok: true, message: confirmation(facts) });

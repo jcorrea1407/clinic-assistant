@@ -21,7 +21,7 @@ export class MailError extends Error {
 /** Prints the email instead of sending it. Local development only. */
 export const logTransport: MailTransport = {
   async send(message) {
-    console.log(`\n--- email (not sent: RESEND_API_KEY is not set) ---\n${JSON.stringify(message, null, 2)}\n---`);
+    console.log(`\n--- email (not sent: MAIL_LOG_ONLY=1) ---\n${JSON.stringify(message, null, 2)}\n---`);
     return { id: "local-log" };
   },
 };
@@ -35,13 +35,14 @@ const notConfigured: MailTransport = {
 type Env = Record<string, string | undefined>;
 
 /**
- * With a key, sends through Resend. Without one: prints locally, and fails
- * closed on Vercel so a visitor is never told a message was sent when it wasn't.
+ * With a key, sends through Resend. Without one it fails closed, so a visitor
+ * is never told a message was sent when it wasn't. MAIL_LOG_ONLY=1 prints the
+ * email instead, for local development; it is ignored on Vercel.
  */
 export async function mailTransportFromEnv(env: Env = process.env): Promise<MailTransport> {
   if (env.RESEND_API_KEY) {
     const { createResendTransport } = await import("./resend.js");
     return createResendTransport(env.RESEND_API_KEY);
   }
-  return env.VERCEL ? notConfigured : logTransport;
+  return env.MAIL_LOG_ONLY === "1" && !env.VERCEL ? logTransport : notConfigured;
 }
