@@ -6,11 +6,56 @@ Upland Physio, Chiro & Massage, a made-up clinic, is the first client.
 
 ## Status
 
-The scaffold is done: per-client config, a validated fact sheet, the model provider seam and a health endpoint. There's no chat endpoint yet.
+Built: per-client config, a validated fact sheet, the model provider seam, a health endpoint and the chat endpoint. Not yet built: the front-desk handoff and the widget.
 
 | Endpoint | What it does |
 |---|---|
 | `GET /api/health` | Loads and validates every client, returns each client's `id` and `model`. Never calls the model. |
+| `POST /api/chat` | One visitor turn, streamed as server-sent events. See [Chat](#chat). |
+
+## Chat
+
+**Request.** The server stores nothing, so the widget sends the whole conversation every turn:
+
+```json
+{ "client": "upland", "messages": [{ "role": "user", "content": "My back hurts. Who should I see?" }] }
+```
+
+Limits: 1–20 messages, each up to 2,000 characters, and the last one must be from the visitor.
+
+**Response.** `text/event-stream`, one JSON event per `data:` line:
+
+| Event | Meaning |
+|---|---|
+| `{ "type": "tier", "tier", "practitioners" }` | Always first, unless there's an error. `practitioners` is `[{ slug, label, bookingUrl }]`; the widget renders them as booking buttons. |
+| `{ "type": "text", "text" }` | A piece of the reply. Append it. |
+| `{ "type": "replace", "text" }` | Throw away the text so far this turn and show this instead. Sent when the reply is declined or cut off (a fixed message), or with `""` when a fallback model takes over partway, in which case its `text` events follow. |
+| `{ "type": "error", "text" }` | A fixed message to show instead of a reply. |
+| `{ "type": "done", "ended" }` | Always last. `ended: true` means the conversation is over: stop taking input. |
+
+### The three tiers
+
+Each turn takes two model calls. The first **classifies** the visitor's latest message, using structured output: a `tier` and, if one fits, the `concern` slug from the fact sheet. Code then decides what happens next:
+
+| Tier | What the visitor gets |
+|---|---|
+| `red-flag` | The fact sheet's fixed `red-flag-message` (911 and Health Link 811), sent by code. The reply model is never called, and `done` carries `ended: true`, so the widget stops taking input. The server stores nothing, so the lock lives in the widget: if a later request's history still contains the red-flag message, the server sends it again, but a cleared history starts over. |
+| `concern` | The reply model says it can't assess symptoms and names the practitioners for that concern. Code sends their booking links, so the model never writes a URL. |
+| `advice-request` | The reply model declines plainly, then offers booking (with the practitioners for the concern, if one fits) or a question to the front desk. |
+| `question` | Answered from the fact sheet only. If the answer isn't there, it says it doesn't know and offers the front desk. |
+
+The model never writes emergency text. If classification fails or is refused, the visitor gets a fixed message with the clinic's phone number, never generated text.
+
+**Why two calls instead of one.** Deciding the tier before any reply exists means a red flag can't leak generated text, and each turn carries a clean label for the model-comparison test set. Both calls start with the same cached system prompt, so the extra call should cost little. That is still to be measured: if the classify call's output schema changes the cached prefix, each call caches the prompt separately (see [Caching](#the-three-tiers)). The cost is a short pause before the reply starts.
+
+**Caching.** The system prompt (rules plus the whole fact sheet, about 32,000 characters) is byte-identical on every request and carries a cache breakpoint. So does the visitor's latest message: the classify call writes the conversation to the cache, and the reply call reads it back. Each call's note goes after the conversation, so it never changes the cached prefix. `npm run try` prints `cache read` per call; from the second call on it should be above zero. Not yet measured: if the reply call's `cache read` is 0 on a first turn, the classify call's structured-output schema is splitting the cache, and the classifier should drop `format` and validate its JSON in code instead.
+
+### Example conversations
+
+`npm run try` runs one conversation per tier against the real model and prints the tier, the reply and token usage. It costs a few cents per run.
+
+<!-- TODO(#72): paste the output of `npm run try` here once ANTHROPIC_API_KEY is available. -->
+_Not recorded yet: they need an API key._
 
 ## Setup
 
@@ -30,7 +75,7 @@ npm run build     # type-check, then validate every client config and fact sheet
 
 Locally you can skip the key: run `ant auth login` once, and the Anthropic SDK picks up that profile. `.env.example` lists what's expected.
 
-Nothing in this change calls the model, so the key is only needed from the chat endpoint on.
+`npm test` never needs the key. `POST /api/chat` and `npm run try` do.
 
 ### Deploying
 
@@ -40,6 +85,10 @@ Connect the GitHub repo in the Vercel dashboard (Framework Preset: Other). Every
 
 ```text
 api/health.ts                 GET handler (Vercel web-standard fetch export)
+api/chat.ts                   POST handler; the logic is in src/chat/
+src/chat/turn.ts              one visitor turn: classify, then red flag or streamed reply
+src/chat/handler.ts           request validation and server-sent events
+src/prompt/system.ts          the system prompt: rules plus the fact sheet
 clients/index.ts              the list of clients
 clients/<id>/config.ts        one client's config
 clients/<id>/fact-sheet.json  that client's facts (until the Webflow CMS takes over)
@@ -55,11 +104,11 @@ scripts/check-config.ts       runs in the build
 
 **FactSource.** `localJsonSource` reads the bundled JSON. A Webflow CMS source will replace it without changing anything downstream.
 
-**ModelProvider.** One call: `complete({ system, messages })`. Only `src/model/anthropic.ts` imports the Anthropic SDK, so another vendor is one more adapter. The Anthropic adapter:
+**ModelProvider.** Two calls, both taking `{ system, messages, note }`: `classify(request, zodSchema)` returns structured output, and `stream(request)` yields text (plus a `restart` if a fallback model takes over partway), then a final `end` event with the stop reason and usage. Only `src/model/anthropic.ts` imports the Anthropic SDK, so another vendor is one more adapter. The Anthropic adapter:
 
 - uses the client's configured model (Upland: `claude-opus-5-5`, low effort);
-- turns on server-side refusal fallbacks (`server-side-fallback-2026-07-01`, `fallbacks: "default"`): if a safety classifier declines, the API retries on a fallback model in the same call, and `Completion.model` says which model answered;
-- caches the system prompt, which holds the fact sheet and is the same on every turn.
+- turns on server-side refusal fallbacks (`server-side-fallback-2026-07-01`, `fallbacks: "default"`): if a safety classifier declines, the API retries on a fallback model in the same call, and `usage.model` says which model answered. The response then holds the declined model's partial output, a `fallback` block, then the fallback's output, so the adapter reads the classification only from after the last `fallback` block, and the stream restarts the reply there;
+- sends the note as a mid-conversation system message after the conversation, and sets the cache breakpoints described under [Caching](#the-three-tiers).
 
 ## Adding a client
 

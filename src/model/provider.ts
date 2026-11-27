@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import type { ModelConfig } from "../config/schema.js";
 import { createAnthropicProvider } from "./anthropic.js";
 
@@ -10,27 +11,40 @@ export interface ChatMessage {
   content: string;
 }
 
-export interface CompletionRequest {
+export interface ModelRequest {
+  /** Identical on every request for a client, so it can be cached. */
   system: string;
+  /** The conversation so far, ending with the visitor's latest message. */
   messages: ChatMessage[];
+  /** An operator instruction for this turn only, placed after the conversation. */
+  note: string;
 }
 
-export interface Completion {
-  text: string;
-  /** "refusal" means the model (and any fallback) declined. Show a fixed message, not `text`. */
-  stopReason: "end_turn" | "max_tokens" | "refusal" | "other";
-  /** The model that produced the reply, which differs from the configured one after a fallback. */
+export interface Usage {
   model: string;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-  };
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
 }
+
+export type ClassifyResult<T> =
+  | { ok: true; value: T; usage: Usage }
+  /** "refusal": the model (and any fallback) declined. "invalid": the output didn't match the schema. */
+  | { ok: false; reason: "refusal" | "invalid"; usage: Usage };
+
+export type StreamEvent =
+  | { type: "text"; text: string }
+  /** A fallback model took over partway: discard the text so far; its reply follows. */
+  | { type: "restart" }
+  /** Always last. On "refusal", discard the text already streamed. */
+  | { type: "end"; stopReason: "end_turn" | "max_tokens" | "refusal" | "other"; usage: Usage };
 
 export interface ModelProvider {
-  complete(request: CompletionRequest): Promise<Completion>;
+  /** Returns structured output that matches `schema`. */
+  classify<T>(request: ModelRequest, schema: z.ZodType<T>): Promise<ClassifyResult<T>>;
+  /** Streams a plain-text reply. */
+  stream(request: ModelRequest): AsyncIterable<StreamEvent>;
 }
 
 export function providerFor(model: ModelConfig): ModelProvider {
