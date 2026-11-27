@@ -6,11 +6,45 @@ Upland Physio, Chiro & Massage, a made-up clinic, is the first client.
 
 ## Status
 
-The scaffold is done: per-client config, a validated fact sheet, the model provider seam and a health endpoint. There's no chat endpoint yet.
+Built: per-client config, a validated fact sheet, the model provider seam, a health endpoint and the front-desk handoff. The chat endpoint is in review (PR #2), and the widget comes later.
 
 | Endpoint | What it does |
 |---|---|
 | `GET /api/health` | Loads and validates every client, returns each client's `id` and `model`. Never calls the model. |
+| `POST /api/handoff` | Emails a visitor's question to the client's front desk, with their consent. Never calls the model. See [Front-desk handoff](#front-desk-handoff). |
+
+## Front-desk handoff
+
+The widget always shows an **Ask the front desk** button. It opens a short form with a consent line, and the visitor must tick it before anything is sent:
+
+> We'll email your question, name and contact details to the front desk at Upland Physio, Chiro & Massage so they can reply. Nothing is kept on this site.
+
+**Request.**
+
+```json
+{
+  "client": "upland",
+  "consent": true,
+  "question": "Can I book a Saturday appointment?",
+  "name": "Sam",
+  "email": "sam@example.com",
+  "phone": "403-555-0199",
+  "preferredTime": "Saturday morning",
+  "practitioner": "priya-nair"
+}
+```
+
+`consent` must be the boolean `true`, checked on the server, not just in the widget. `email` or `phone` is required, and the other fields are optional. `practitioner` is the slug the chat suggested, and it must exist in the fact sheet. `website` is a honeypot hidden from people: if a bot fills it, it gets a normal-looking success and nothing is sent. Name, phone and preferred time must be single lines; the question can be up to 2,000 characters.
+
+**Response.** `200 { ok: true, message }`, where `message` is the confirmation to show: "Sent. The front desk replies to messages within one business day. They can help with booking and questions about the clinic, not treatment advice." If sending fails, it returns `502 { ok: false, error }` with a fixed message giving the clinic's phone number. Bad input gets a `400`.
+
+**The email** goes to the client's `frontDeskInbox`. Its subject is tagged with the suggested practitioner, as in `[Dr. Priya Nair, chiropractor] Website question from Sam`, or `[No practitioner] …`. Reply-to is the visitor's email, so the front desk answers by replying. The footer says it was sent with the visitor's consent and isn't stored.
+
+**Nothing is stored, and logs carry no visitor data.** Each handoff logs only `{ client, ok, emailId }`, and a test fails if any submitted field reaches the logs.
+
+**MailTransport.** Only `src/mail/resend.ts` imports the Resend SDK. Without `RESEND_API_KEY`, a local run prints the email to the terminal instead, and a Vercel deploy refuses to send, so a visitor is never told a message went when it didn't.
+
+Rate limiting will be set with Vercel's firewall when the site ships, and CORS when the widget is built.
 
 ## Setup
 
@@ -27,6 +61,11 @@ npm run build     # type-check, then validate every client config and fact sheet
 | Variable | Where | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Vercel (Preview and Production) | Claude API key. Never commit it. |
+| `RESEND_API_KEY` | Vercel (Preview and Production) | Sends handoff emails. Without it, a deploy refuses handoffs and a local run prints them. |
+| `MAIL_FROM` | Vercel, optional | The sender, as `Name <address>` on a domain verified in Resend. Defaults to Resend's test sender, `onboarding@resend.dev`. |
+| `HANDOFF_TO_OVERRIDE` | Vercel, optional | Sends every handoff to this address instead of the client's `frontDeskInbox`. For the demo, while the inboxes are placeholders. |
+
+Until a domain is verified in Resend, its test sender only delivers to the address on your Resend account, so set `HANDOFF_TO_OVERRIDE` to that address.
 
 Locally you can skip the key: run `ant auth login` once, and the Anthropic SDK picks up that profile. `.env.example` lists what's expected.
 
@@ -40,6 +79,9 @@ Connect the GitHub repo in the Vercel dashboard (Framework Preset: Other). Every
 
 ```text
 api/health.ts                 GET handler (Vercel web-standard fetch export)
+api/handoff.ts                POST handler; the logic is in src/handoff/
+src/handoff/                  request schema, the email, the visitor-facing copy
+src/mail/                     MailTransport interface and the Resend adapter
 clients/index.ts              the list of clients
 clients/<id>/config.ts        one client's config
 clients/<id>/fact-sheet.json  that client's facts (until the Webflow CMS takes over)
