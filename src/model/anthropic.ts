@@ -42,14 +42,22 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
 
   return {
     async classify<T>(request: ModelRequest, schema: z.ZodType<T>): Promise<ClassifyResult<T>> {
-      const response = await sdk().beta.messages.parse({
+      // `create`, not `parse`: after a fallback, the response holds the declined
+      // model's unfinished JSON before the fallback block, and `parse` throws on it.
+      const response = await sdk().beta.messages.create({
         ...baseParams(request),
         max_tokens: 4_000,
         output_config: { effort, format: zodOutputFormat(schema) },
       });
       const usage = usageOf(response);
       if (response.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
-      const parsed = schema.safeParse(response.parsed_output);
+      let json: unknown;
+      try {
+        json = JSON.parse(finalText(response.content));
+      } catch {
+        return { ok: false, reason: "invalid", usage };
+      }
+      const parsed = schema.safeParse(json);
       return parsed.success ? { ok: true, value: parsed.data, usage } : { ok: false, reason: "invalid", usage };
     },
 
@@ -60,7 +68,10 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
         output_config: { effort },
       });
       for await (const event of stream) {
-        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        if (event.type === "content_block_start" && event.content_block.type === "fallback") {
+          // The model declined partway; a fallback model starts over from here.
+          yield { type: "restart" };
+        } else if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
           yield { type: "text", text: event.delta.text };
         }
       }
@@ -73,6 +84,15 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
       };
     },
   };
+}
+
+/** The text written after the last fallback block: the answer from the model that finished. */
+function finalText(content: Anthropic.Beta.Messages.BetaContentBlock[]): string {
+  const start = content.findLastIndex((b) => b.type === "fallback") + 1;
+  return content
+    .slice(start)
+    .flatMap((b) => (b.type === "text" ? [b.text] : []))
+    .join("");
 }
 
 function usageOf(message: Anthropic.Beta.Messages.BetaMessage): Usage {

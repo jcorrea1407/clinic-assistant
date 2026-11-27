@@ -5,8 +5,9 @@ export const usage: Usage = { model: "fake", inputTokens: 1, outputTokens: 1, ca
 /** A ModelProvider that returns scripted answers and records every call. */
 export function fakeProvider(script: {
   classify?: ClassifyResult<unknown> | (() => never);
-  reply?: string[];
-  stopReason?: "end_turn" | "refusal";
+  /** Text pieces, or a restart where a fallback model takes over. */
+  reply?: (string | { type: "restart" })[];
+  stopReason?: "end_turn" | "refusal" | "max_tokens";
 }) {
   const calls = { classify: [] as ModelRequest[], stream: [] as ModelRequest[] };
   const provider: ModelProvider = {
@@ -18,7 +19,7 @@ export function fakeProvider(script: {
     },
     async *stream(request: ModelRequest): AsyncIterable<StreamEvent> {
       calls.stream.push(request);
-      for (const text of script.reply ?? ["Hi"]) yield { type: "text", text };
+      for (const piece of script.reply ?? ["Hi"]) yield typeof piece === "string" ? { type: "text", text: piece } : piece;
       yield { type: "end", stopReason: script.stopReason ?? "end_turn", usage };
     },
   };

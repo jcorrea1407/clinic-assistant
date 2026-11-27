@@ -85,6 +85,12 @@ describe("an advice request", () => {
     expect(events[0]).toMatchObject({ type: "tier", tier: "advice-request" });
     expect(calls.stream[0]!.note).toMatch(/asks for treatment advice\. Decline/);
   });
+
+  it("still offers booking when no concern fits", async () => {
+    const { provider, calls } = fakeProvider({ classify: classified("advice-request") });
+    await turn(provider, [{ role: "user", content: "Should I take ibuprofen?" }]);
+    expect(calls.stream[0]!.note).toContain("offer to book an appointment or to pass a question to the front desk");
+  });
 });
 
 describe("a question", () => {
@@ -114,6 +120,26 @@ describe("failures", () => {
       },
     });
     expect((await turn(provider))[0]).toMatchObject({ type: "error" });
+  });
+
+  it("clears the declined model's text when a fallback takes over, then streams the fallback's reply", async () => {
+    const { provider } = fakeProvider({ reply: ["You could ice", { type: "restart" }, "Sorry, I can't advise on that."] });
+    const events = await turn(provider);
+    expect(events.slice(1)).toEqual([
+      { type: "text", text: "You could ice" },
+      { type: "replace", text: "" },
+      { type: "text", text: "Sorry, I can't advise on that." },
+      { type: "done", ended: false },
+    ]);
+  });
+
+  it("replaces a reply cut off by the token limit", async () => {
+    const { provider } = fakeProvider({ reply: ["Our Saturday hours are"], stopReason: "max_tokens" });
+    const events = await turn(provider);
+    expect(events.slice(-2)).toEqual([
+      { type: "replace", text: "Sorry, my answer was cut short. You can ask the front desk at 403-555-0142." },
+      { type: "done", ended: false },
+    ]);
   });
 
   it("replaces a reply that was declined mid-stream", async () => {

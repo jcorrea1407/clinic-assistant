@@ -35,6 +35,8 @@ export type ClassifyResult<T> =
 
 export type StreamEvent =
   | { type: "text"; text: string }
+  /** A fallback model took over partway: discard the text so far; its reply follows. */
+  | { type: "restart" }
   /** Always last. On "refusal", discard the text already streamed. */
   | { type: "end"; stopReason: "end_turn" | "max_tokens" | "refusal" | "other"; usage: Usage };
 

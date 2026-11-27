@@ -87,7 +87,7 @@ function replyNote(tier: Exclude<Tier, "red-flag">, practitioners: PractitionerL
     case "advice-request":
       return practitioners.length
         ? `This message asks for treatment advice. Decline, then offer booking. The practitioners for it ("${concern}"), shown as booking buttons:\n${list}`
-        : "This message asks for treatment advice. Decline, then offer to pass a question to the front desk.";
+        : "This message asks for treatment advice. Decline, then offer to book an appointment or to pass a question to the front desk.";
     case "question":
       return "This message is a question. Answer it from the fact sheet only.";
   }
@@ -138,6 +138,7 @@ export async function* runTurn(input: TurnInput): AsyncGenerator<ChatEvent> {
   yield { type: "tier", tier, practitioners };
 
   const declined = `Sorry, I can't help with that here. You can ask the front desk at ${phone}.`;
+  const cutShort = `Sorry, my answer was cut short. You can ask the front desk at ${phone}.`;
   try {
     for await (const event of provider.stream({
       system: systemPrompt,
@@ -146,9 +147,14 @@ export async function* runTurn(input: TurnInput): AsyncGenerator<ChatEvent> {
     })) {
       if (event.type === "text") {
         yield event;
+      } else if (event.type === "restart") {
+        // Clear the declined model's partial text; the fallback's text appends after.
+        yield { type: "replace", text: "" };
       } else {
         onUsage?.("reply", event.usage);
         if (event.stopReason === "refusal") yield { type: "replace", text: declined };
+        // A cut-off answer can mislead (half a price list), so it never stands.
+        else if (event.stopReason === "max_tokens") yield { type: "replace", text: cutShort };
       }
     }
   } catch (error) {
