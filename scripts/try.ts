@@ -19,6 +19,13 @@ const examples: { name: string; messages: string[] }[] = [
   { name: "not-in-fact-sheet", messages: ["Do you offer dry needling?"] },
 ];
 
+// Reads ANTHROPIC_API_KEY from .env (gitignored) if there is one.
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // No .env: the SDK falls back to the environment or an `ant auth login` profile.
+}
+
 const filter = process.argv[2];
 const [client] = await loadAllClients();
 if (!client) throw new Error("No clients configured");

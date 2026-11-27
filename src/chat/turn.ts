@@ -3,7 +3,7 @@ import type { PublicFactSheet } from "../facts/schema.js";
 import type { ChatMessage, ModelProvider, Usage } from "../model/provider.js";
 
 // One visitor turn, in two model calls:
-//   1. classify the latest message into a tier (structured output)
+//   1. classify the latest message into a tier (JSON, checked against a schema)
 //   2. for every tier except red-flag, stream the reply
 // A red flag never reaches step 2: code sends the fixed 911/811 message and
 // the conversation ends. The model never writes emergency text.
@@ -51,6 +51,7 @@ export function classificationSchema(facts: PublicFactSheet) {
 
 export function classifyNote(facts: PublicFactSheet): string {
   const triggers = facts.collections.redFlagTriggers.map((t) => `- ${t.name}: ${t.examplePhrases}`).join("\n");
+  const concerns = facts.collections.concerns.map((c) => c.slug).join(", ");
   return `Classify the visitor's latest message, reading it in the context of the conversation. Don't reply to the visitor.
 
 tier:
@@ -61,7 +62,10 @@ ${triggers}
 - "concern": describes a problem or injury and wants to know who can help or whether the clinic treats it.
 - "question": anything else, such as hours, prices, billing, insurance, location, the practitioners, or off-topic messages.
 
-concern: the slug of the concern from the fact sheet that the message is about, or null if none fits.`;
+concern: the slug of the concern from the fact sheet that the message is about, or null if none fits. The slugs: ${concerns}.
+
+Answer with only this JSON object, no code fence and no other text:
+{"tier": "red-flag" | "advice-request" | "concern" | "question", "concern": "<slug>" | null}`;
 }
 
 export function practitionersFor(facts: PublicFactSheet, concernSlug: string | null): PractitionerLink[] {

@@ -67,7 +67,8 @@ describe("Anthropic provider", () => {
       fallbacks: "default",
       system: [{ type: "text", text: "Facts…", cache_control: { type: "ephemeral" } }],
     });
-    expect(params.output_config.format).toBeDefined();
+    // No format: it would change the cached prefix and split the cache from the reply call.
+    expect(params.output_config).toEqual({ effort: "low" });
     expect(params.messages).toEqual([
       { role: "user", content: "Hi" },
       { role: "assistant", content: "Hello!" },
@@ -101,6 +102,11 @@ describe("Anthropic provider", () => {
       reason: "invalid",
       usage: expect.objectContaining({ inputTokens: 10 }),
     });
+  });
+
+  it("reads JSON wrapped in a code fence", async () => {
+    const { client } = fakeClient({ created: { content: [text('```json\n{"tier":"concern"}\n```')] } });
+    expect(await provider(client).classify(request, schema)).toMatchObject({ ok: true, value: { tier: "concern" } });
   });
 
   it("reads the classification from after a fallback, not the declined model's partial JSON", async () => {

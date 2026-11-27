@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
 import type { ClassifyResult, ModelProvider, ModelRequest, StreamEvent, Usage } from "./provider.js";
 
@@ -42,18 +41,20 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
 
   return {
     async classify<T>(request: ModelRequest, schema: z.ZodType<T>): Promise<ClassifyResult<T>> {
-      // `create`, not `parse`: after a fallback, the response holds the declined
-      // model's unfinished JSON before the fallback block, and `parse` throws on it.
+      // No `output_config.format`: a schema there changes the cached prefix, so
+      // classify and reply would each cache their own copy of the prompt. The
+      // note asks for JSON and the schema is checked here instead. Measured with
+      // `npm run try`: with a format, the reply call never read classify's cache.
       const response = await sdk().beta.messages.create({
         ...baseParams(request),
         max_tokens: 4_000,
-        output_config: { effort, format: zodOutputFormat(schema) },
+        output_config: { effort },
       });
       const usage = usageOf(response);
       if (response.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
       let json: unknown;
       try {
-        json = JSON.parse(finalText(response.content));
+        json = JSON.parse(jsonObject(finalText(response.content)));
       } catch {
         return { ok: false, reason: "invalid", usage };
       }
@@ -93,6 +94,13 @@ function finalText(content: Anthropic.Beta.Messages.BetaContentBlock[]): string 
     .slice(start)
     .flatMap((b) => (b.type === "text" ? [b.text] : []))
     .join("");
+}
+
+/** The outermost {...} in the text, so a stray code fence or sentence around it doesn't matter. */
+function jsonObject(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  return start >= 0 && end > start ? text.slice(start, end + 1) : text;
 }
 
 function usageOf(message: Anthropic.Beta.Messages.BetaMessage): Usage {
