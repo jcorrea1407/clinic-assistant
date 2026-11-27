@@ -104,6 +104,15 @@ describe("Anthropic provider", () => {
     });
   });
 
+  it.each([
+    ["an echoed template before the answer", 'Template: {"tier": ...}. Answer: {"tier":"concern"}'],
+    ["prose with braces", 'Sure {not json} here you go: {"tier":"concern"} done.'],
+    ["a brace inside a string", '{"tier":"concern","why":"a } in text"}'],
+  ])("finds the answer in %s", async (_name, raw) => {
+    const { client } = fakeClient({ created: { content: [text(raw)] } });
+    expect(await provider(client).classify(request, schema)).toMatchObject({ ok: true, value: { tier: "concern" } });
+  });
+
   it("reads JSON wrapped in a code fence", async () => {
     const { client } = fakeClient({ created: { content: [text('```json\n{"tier":"concern"}\n```')] } });
     expect(await provider(client).classify(request, schema)).toMatchObject({ ok: true, value: { tier: "concern" } });

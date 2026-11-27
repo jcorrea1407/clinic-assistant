@@ -22,8 +22,9 @@ const examples: { name: string; messages: string[] }[] = [
 // Reads ANTHROPIC_API_KEY from .env (gitignored) if there is one.
 try {
   process.loadEnvFile(".env");
-} catch {
+} catch (error) {
   // No .env: the SDK falls back to the environment or an `ant auth login` profile.
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 }
 
 const filter = process.argv[2];

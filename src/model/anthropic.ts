@@ -52,14 +52,19 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
       });
       const usage = usageOf(response);
       if (response.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
-      let json: unknown;
-      try {
-        json = JSON.parse(jsonObject(finalText(response.content)));
-      } catch {
-        return { ok: false, reason: "invalid", usage };
+      // The answer is the last object in the text that matches the schema, so a
+      // code fence, a sentence, or an echoed template around it doesn't matter.
+      for (const candidate of jsonObjects(finalText(response.content)).reverse()) {
+        let json: unknown;
+        try {
+          json = JSON.parse(candidate);
+        } catch {
+          continue;
+        }
+        const parsed = schema.safeParse(json);
+        if (parsed.success) return { ok: true, value: parsed.data, usage };
       }
-      const parsed = schema.safeParse(json);
-      return parsed.success ? { ok: true, value: parsed.data, usage } : { ok: false, reason: "invalid", usage };
+      return { ok: false, reason: "invalid", usage };
     },
 
     async *stream(request: ModelRequest): AsyncIterable<StreamEvent> {
@@ -96,11 +101,26 @@ function finalText(content: Anthropic.Beta.Messages.BetaContentBlock[]): string 
     .join("");
 }
 
-/** The outermost {...} in the text, so a stray code fence or sentence around it doesn't matter. */
-function jsonObject(text: string): string {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  return start >= 0 && end > start ? text.slice(start, end + 1) : text;
+/** Every top-level balanced {...} span in the text, in order. Braces inside strings are skipped. */
+export function jsonObjects(text: string): string[] {
+  const spans: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"' && depth > 0) {
+      inString = true;
+    } else if (ch === "{") {
+      if (depth++ === 0) start = i;
+    } else if (ch === "}" && depth > 0) {
+      if (--depth === 0) spans.push(text.slice(start, i + 1));
+    }
+  }
+  return spans;
 }
 
 function usageOf(message: Anthropic.Beta.Messages.BetaMessage): Usage {

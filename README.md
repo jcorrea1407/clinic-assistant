@@ -45,13 +45,13 @@ Each turn takes two model calls. The first **classifies** the visitor's latest m
 | `advice-request` | The reply model declines plainly, then offers booking (with the practitioners for the concern, if one fits) or a question to the front desk. |
 | `question` | Answered from the fact sheet only. If the answer isn't there, it says it doesn't know and offers the front desk. |
 
-The model never writes emergency text. If classification fails or is refused, the visitor gets a fixed message with the clinic's phone number, never generated text.
+The model never writes emergency text. Classification is read as the last JSON object in the answer that matches the schema; a missing or unknown `concern` becomes `null`, so it can never sink a `red-flag` tier. Output that doesn't parse, or an error, gets one retry. If it still fails, or is refused, the visitor gets fixed text, never generated text: "Sorry, something went wrong on my side. If this may be an emergency, call 911. Otherwise, please call the front desk at …". The message might have been an emergency, so the failure text always says to call 911.
 
 **Why two calls instead of one.** Deciding the tier before any reply exists means a red flag can't leak generated text, and each turn carries a clean label for the model-comparison test set. Both calls start with the same cached system prompt, so the extra call costs little (measured below). The cost is a short pause before the reply starts.
 
 **Caching.** The system prompt (rules plus the whole fact sheet, about 32,000 characters) is byte-identical on every request and carries a cache breakpoint. So does the visitor's latest message: the classify call writes the conversation to the cache, and the reply call reads it back. Each call's note goes after the conversation, so it never changes the cached prefix. `npm run try` prints `cache read` per call.
 
-Measured on 2026-11-27 (see the examples below): both calls read the same roughly 13,600 cached tokens, and on a follow-up message the reply call also reads the conversation the classify call just wrote. The classify call doesn't use the API's structured-output `format`: in a first run with it, the schema changed the cached prefix by about 340 tokens, so the two calls kept separate cache entries and a cold conversation paid for two cache writes. Asking for JSON in the note and checking it with Zod keeps one shared entry; output that doesn't parse gets the fixed "call the front desk" message.
+Measured on 2026-11-27 (see the examples below): both calls read the same roughly 13,600 cached tokens, and on a follow-up message the reply call also reads the conversation the classify call just wrote. The classify call doesn't use the API's structured-output `format`: in a first run with it, the schema changed the cached prefix by about 340 tokens, so the two calls kept separate cache entries and a cold conversation paid for two cache writes. Asking for JSON in the note and checking it with Zod keeps one shared entry; output that doesn't parse is retried once, then gets the fixed failure message above.
 
 ### Example conversations
 

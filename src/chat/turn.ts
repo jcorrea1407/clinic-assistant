@@ -45,8 +45,12 @@ export function classificationSchema(facts: PublicFactSheet) {
   const concerns = facts.collections.concerns.map((c) => c.slug) as [string, ...string[]];
   return z.object({
     tier: z.enum(["red-flag", "advice-request", "concern", "question"]),
-    /** The concern this message is about, if it matches one. */
-    concern: z.enum(concerns).nullable(),
+    /**
+     * The concern this message is about, if it matches one. Lenient on purpose:
+     * a missing or unknown slug becomes null, so a bad concern can never sink a
+     * red-flag tier.
+     */
+    concern: z.enum(concerns).nullable().catch(null),
   });
 }
 
@@ -96,11 +100,24 @@ function replyNote(tier: Exclude<Tier, "red-flag">, practitioners: PractitionerL
   }
 }
 
+async function classifyOnce({ facts, systemPrompt, provider, messages }: TurnInput) {
+  try {
+    return await provider.classify(
+      { system: systemPrompt, messages, note: classifyNote(facts) },
+      classificationSchema(facts),
+    );
+  } catch (error) {
+    console.error("classify failed", error);
+    return undefined;
+  }
+}
+
 export async function* runTurn(input: TurnInput): AsyncGenerator<ChatEvent> {
   const { facts, systemPrompt, provider, messages, onUsage } = input;
   const redFlagMessage = clinicFact(facts, "red-flag-message");
   const phone = clinicFact(facts, "phone");
-  const failure = `Sorry, something went wrong on my side. Please call the front desk at ${phone}.`;
+  // Shown when classification fails, so the message might have been an emergency.
+  const failure = `Sorry, something went wrong on my side. If this may be an emergency, call 911. Otherwise, please call the front desk at ${phone}.`;
 
   // "Then stop": once the fixed message has been shown, the conversation is over.
   if (messages.some((m) => m.role === "assistant" && m.content === redFlagMessage)) {
@@ -110,20 +127,15 @@ export async function* runTurn(input: TurnInput): AsyncGenerator<ChatEvent> {
     return;
   }
 
-  let classification;
-  try {
-    classification = await provider.classify(
-      { system: systemPrompt, messages, note: classifyNote(facts) },
-      classificationSchema(facts),
-    );
-  } catch (error) {
-    console.error("classify failed", error);
-    yield { type: "error", text: failure };
-    yield { type: "done", ended: false };
-    return;
+  // Two tries: output that didn't parse, or a thrown error, gets one retry.
+  // A refusal doesn't, since asking again won't change it.
+  let classification: Awaited<ReturnType<typeof classifyOnce>> | undefined;
+  for (let attempt = 0; attempt < 2 && !classification?.ok; attempt++) {
+    classification = await classifyOnce(input);
+    if (classification?.usage) onUsage?.("classify", classification.usage);
+    if (classification && !classification.ok && classification.reason === "refusal") break;
   }
-  onUsage?.("classify", classification.usage);
-  if (!classification.ok) {
+  if (!classification?.ok) {
     yield { type: "error", text: failure };
     yield { type: "done", ended: false };
     return;
