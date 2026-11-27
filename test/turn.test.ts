@@ -107,10 +107,33 @@ describe("failures", () => {
     const { provider, calls } = fakeProvider({ classify: { ok: false, reason: "refusal", usage } });
     const events = await turn(provider);
     expect(events).toEqual([
-      { type: "error", text: "Sorry, something went wrong on my side. Please call the front desk at 403-555-0142." },
+      {
+        type: "error",
+        text: "Sorry, something went wrong on my side. If this may be an emergency, call 911. Otherwise, please call the front desk at 403-555-0142.",
+      },
       { type: "done", ended: false },
     ]);
     expect(calls.stream).toHaveLength(0);
+    expect(calls.classify).toHaveLength(1);
+  });
+
+  it("retries once when the classification doesn't parse", async () => {
+    const { provider, calls } = fakeProvider({
+      classify: [{ ok: false, reason: "invalid", usage }, classified("red-flag")],
+    });
+    const events = await turn(provider, [{ role: "user", content: "I have chest pain" }]);
+    expect(calls.classify).toHaveLength(2);
+    expect(events[1]).toEqual({ type: "text", text: redFlag });
+  });
+
+  it("gives up after a second failure, with the emergency line", async () => {
+    const throws = () => {
+      throw new Error("network");
+    };
+    const { provider, calls } = fakeProvider({ classify: [throws, throws] });
+    const events = await turn(provider);
+    expect(calls.classify).toHaveLength(2);
+    expect(events[0]).toMatchObject({ type: "error", text: expect.stringContaining("call 911") });
   });
 
   it("shows fixed text when the classify call throws", async () => {
@@ -153,10 +176,21 @@ describe("failures", () => {
 });
 
 describe("the classification schema", () => {
-  it("only accepts concern slugs from the fact sheet", () => {
+  it("keeps a concern slug from the fact sheet", () => {
     const schema = classificationSchema(facts);
-    expect(schema.safeParse({ tier: "concern", concern: "back-and-neck" }).success).toBe(true);
-    expect(schema.safeParse({ tier: "concern", concern: "made-up" }).success).toBe(false);
+    expect(schema.safeParse({ tier: "concern", concern: "back-and-neck" }).data).toEqual({ tier: "concern", concern: "back-and-neck" });
+  });
+
+  it.each([
+    ["an unknown slug", { tier: "red-flag", concern: "lower-back" }],
+    ["no concern key", { tier: "red-flag" }],
+    ["the note's placeholder", { tier: "red-flag", concern: "<slug>" }],
+  ])("keeps a red flag when the concern is %s, and drops the concern", (_name, output) => {
+    expect(classificationSchema(facts).parse(output)).toEqual({ tier: "red-flag", concern: null });
+  });
+
+  it("still rejects an unknown tier", () => {
+    expect(classificationSchema(facts).safeParse({ tier: "emergency", concern: null }).success).toBe(false);
   });
 });
 

@@ -4,7 +4,8 @@ export const usage: Usage = { model: "fake", inputTokens: 1, outputTokens: 1, ca
 
 /** A ModelProvider that returns scripted answers and records every call. */
 export function fakeProvider(script: {
-  classify?: ClassifyResult<unknown> | (() => never);
+  /** One result for every call, or a list consumed one per call. */
+  classify?: ClassifyResult<unknown> | (() => never) | (ClassifyResult<unknown> | (() => never))[];
   /** Text pieces, or a restart where a fallback model takes over. */
   reply?: (string | { type: "restart" })[];
   stopReason?: "end_turn" | "refusal" | "max_tokens";
@@ -13,7 +14,8 @@ export function fakeProvider(script: {
   const provider: ModelProvider = {
     async classify<T>(request: ModelRequest) {
       calls.classify.push(request);
-      const result = script.classify ?? { ok: true, value: { tier: "question", concern: null }, usage };
+      const scripted = Array.isArray(script.classify) ? script.classify[calls.classify.length - 1] : script.classify;
+      const result = scripted ?? { ok: true, value: { tier: "question", concern: null }, usage };
       if (typeof result === "function") result();
       return result as ClassifyResult<T>;
     },

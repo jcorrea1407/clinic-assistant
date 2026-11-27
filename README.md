@@ -36,7 +36,7 @@ Limits: 1–20 messages, each up to 2,000 characters, and the last one must be f
 
 ### The three tiers
 
-Each turn takes two model calls. The first **classifies** the visitor's latest message, using structured output: a `tier` and, if one fits, the `concern` slug from the fact sheet. Code then decides what happens next:
+Each turn takes two model calls. The first **classifies** the visitor's latest message as JSON: a `tier` and, if one fits, the `concern` slug from the fact sheet. Code checks it against a Zod schema built from the fact sheet. Code then decides what happens next:
 
 | Tier | What the visitor gets |
 |---|---|
@@ -45,18 +45,72 @@ Each turn takes two model calls. The first **classifies** the visitor's latest m
 | `advice-request` | The reply model declines plainly, then offers booking (with the practitioners for the concern, if one fits) or a question to the front desk. |
 | `question` | Answered from the fact sheet only. If the answer isn't there, it says it doesn't know and offers the front desk. |
 
-The model never writes emergency text. If classification fails or is refused, the visitor gets a fixed message with the clinic's phone number, never generated text.
+The model never writes emergency text. Classification is read as the last JSON object in the answer that matches the schema; a missing or unknown `concern` becomes `null`, so it can never sink a `red-flag` tier. Output that doesn't parse, or an error, gets one retry. If it still fails, or is refused, the visitor gets fixed text, never generated text: "Sorry, something went wrong on my side. If this may be an emergency, call 911. Otherwise, please call the front desk at …". The message might have been an emergency, so the failure text always says to call 911.
 
-**Why two calls instead of one.** Deciding the tier before any reply exists means a red flag can't leak generated text, and each turn carries a clean label for the model-comparison test set. Both calls start with the same cached system prompt, so the extra call should cost little. That is still to be measured: if the classify call's output schema changes the cached prefix, each call caches the prompt separately (see [Caching](#the-three-tiers)). The cost is a short pause before the reply starts.
+**Why two calls instead of one.** Deciding the tier before any reply exists means a red flag can't leak generated text, and each turn carries a clean label for the model-comparison test set. Both calls start with the same cached system prompt, so the extra call costs little (measured below). The cost is a short pause before the reply starts.
 
-**Caching.** The system prompt (rules plus the whole fact sheet, about 32,000 characters) is byte-identical on every request and carries a cache breakpoint. So does the visitor's latest message: the classify call writes the conversation to the cache, and the reply call reads it back. Each call's note goes after the conversation, so it never changes the cached prefix. `npm run try` prints `cache read` per call; from the second call on it should be above zero. Not yet measured: if the reply call's `cache read` is 0 on a first turn, the classify call's structured-output schema is splitting the cache, and the classifier should drop `format` and validate its JSON in code instead.
+**Caching.** The system prompt (rules plus the whole fact sheet, about 32,000 characters) is byte-identical on every request and carries a cache breakpoint. So does the visitor's latest message: the classify call writes the conversation to the cache, and the reply call reads it back. Each call's note goes after the conversation, so it never changes the cached prefix. `npm run try` prints `cache read` per call.
+
+Measured on 2026-11-27 (see the examples below): both calls read the same roughly 13,600 cached tokens, and on a follow-up message the reply call also reads the conversation the classify call just wrote. The classify call doesn't use the API's structured-output `format`: in a first run with it, the schema changed the cached prefix by about 340 tokens, so the two calls kept separate cache entries and a cold conversation paid for two cache writes. Asking for JSON in the note and checking it with Zod keeps one shared entry; output that doesn't parse is retried once, then gets the fixed failure message above.
 
 ### Example conversations
 
 `npm run try` runs one conversation per tier against the real model and prints the tier, the reply and token usage. It costs a few cents per run.
 
-<!-- TODO(#72): paste the output of `npm run try` here once ANTHROPIC_API_KEY is available. -->
-_Not recorded yet: they need an API key._
+Recorded on 2026-11-27 with `claude-opus-5-5` at low effort. The cache was still warm from an earlier run, so the first call reads instead of writes.
+
+```text
+=== concern ===
+
+Visitor: My lower back has been stiff for two weeks since I moved house. Who should I see?
+  [classify] claude-opus-5-5: in 754, cache read 13644, cache write 0, out 24
+  [tier] concern · Dr. Priya Nair, chiropractor → /book/priya-nair; Daniel Reyes, physiotherapist → /book/daniel-reyes
+  [reply] claude-opus-5-5: in 78, cache read 13644, cache write 0, out 152
+Assistant: Sorry to hear moving house left your back stiff. I can't assess symptoms, but two of our practitioners see people for back and neck pain:
+
+- Dr. Priya Nair, chiropractor
+- Daniel Reyes, physiotherapist
+
+You can start with either one. Both assess you first and explain your options. You can book with the buttons below this reply.
+
+=== red-flag ===
+
+Visitor: My back hurts and since this morning I can't control my bladder.
+  [classify] claude-opus-5-5: in 754, cache read 13616, cache write 21, out 26
+  [tier] red-flag
+  [conversation ended]
+Assistant: I can't help with this here, and it may need urgent care. If there's an immediate threat to someone's life, health or safety, call 911 now. If you're not sure where to go, call Health Link at 811. Registered nurses answer 24/7, and it's free and confidential.
+
+=== advice-request ===
+
+Visitor: I sprained my ankle playing soccer. Should I use ice or heat?
+  [classify] claude-opus-5-5: in 754, cache read 13642, cache write 0, out 26
+  [tier] advice-request · Maya Okafor, physiotherapist → /book/maya-okafor; Liam Fraser, registered massage therapist (RMT) → /book/liam-fraser
+  [reply] claude-opus-5-5: in 90, cache read 13642, cache write 0, out 200
+Assistant: I'm not able to give advice on ice, heat or any other treatment. If you'd like to have your ankle looked at, I can help you book: Maya Okafor, physiotherapist, works with sports injuries and getting back to running. Liam Fraser, registered massage therapist (RMT), works with sports and training recovery, and massage can be added once a physiotherapist has assessed you. You can book either of them with the buttons below, or I can pass a question to the front desk.
+
+=== question ===
+
+Visitor: Do you direct bill Alberta Blue Cross?
+  [classify] claude-opus-5-5: in 754, cache read 13636, cache write 0, out 16
+  [tier] question
+  [reply] claude-opus-5-5: in 24, cache read 13636, cache write 0, out 131
+Assistant: Yes, Upland direct bills Alberta Blue Cross. The clinic sends the claim to Alberta Blue Cross, and you pay only the part your plan doesn't cover. What's covered depends on your plan, so check your plan details or ask Alberta Blue Cross.
+
+Visitor: And what are your hours on Saturday?
+  [classify] claude-opus-5-5: in 754, cache read 13636, cache write 107, out 35
+  [tier] question
+  [reply] claude-opus-5-5: in 24, cache read 13743, cache write 0, out 73
+Assistant: On Saturdays the clinic is open from 8 am to 2 pm. We're closed on Sundays and statutory holidays.
+
+=== not-in-fact-sheet ===
+
+Visitor: Do you offer dry needling?
+  [classify] claude-opus-5-5: in 754, cache read 13628, cache write 0, out 16
+  [tier] question
+  [reply] claude-opus-5-5: in 24, cache read 13628, cache write 0, out 122
+Assistant: I don't have information about dry needling, so I can't say whether it's offered here. I'm happy to pass your question to the front desk, who reply within one business day. You can also call them at 403-555-0142 or email frontdesk@upland.example.
+```
 
 
 ## Front-desk handoff
@@ -116,7 +170,7 @@ npm run build     # type-check, then validate every client config and fact sheet
 
 Until a domain is verified in Resend, its test sender only delivers to the address on your Resend account, so set `HANDOFF_TO_OVERRIDE` to that address.
 
-Locally you can skip the Anthropic key: run `ant auth login` once, and the Anthropic SDK picks up that profile. `.env.example` lists what's expected.
+Locally, put `ANTHROPIC_API_KEY` in `.env` (gitignored; never in `.env.example`, which is committed), and `npm run try` loads it. Or run `ant auth login` once, and the Anthropic SDK picks up that profile. `.env.example` lists what's expected.
 
 `npm test` never needs the key. `POST /api/chat` and `npm run try` do.
 
@@ -150,7 +204,7 @@ scripts/check-config.ts       runs in the build
 
 **FactSource.** `localJsonSource` reads the bundled JSON. A Webflow CMS source will replace it without changing anything downstream.
 
-**ModelProvider.** Two calls, both taking `{ system, messages, note }`: `classify(request, zodSchema)` returns structured output, and `stream(request)` yields text (plus a `restart` if a fallback model takes over partway), then a final `end` event with the stop reason and usage. Only `src/model/anthropic.ts` imports the Anthropic SDK, so another vendor is one more adapter. The Anthropic adapter:
+**ModelProvider.** Two calls, both taking `{ system, messages, note }`: `classify(request, zodSchema)` returns JSON checked against the schema, and `stream(request)` yields text (plus a `restart` if a fallback model takes over partway), then a final `end` event with the stop reason and usage. Only `src/model/anthropic.ts` imports the Anthropic SDK, so another vendor is one more adapter. The Anthropic adapter:
 
 - uses the client's configured model (Upland: `claude-opus-5-5`, low effort);
 - turns on server-side refusal fallbacks (`server-side-fallback-2026-07-01`, `fallbacks: "default"`): if a safety classifier declines, the API retries on a fallback model in the same call, and `usage.model` says which model answered. The response then holds the declined model's partial output, a `fallback` block, then the fallback's output, so the adapter reads the classification only from after the last `fallback` block, and the stream restarts the reply there;

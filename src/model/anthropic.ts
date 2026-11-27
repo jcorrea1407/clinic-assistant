@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
 import type { ClassifyResult, ModelProvider, ModelRequest, StreamEvent, Usage } from "./provider.js";
 
@@ -42,23 +41,30 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
 
   return {
     async classify<T>(request: ModelRequest, schema: z.ZodType<T>): Promise<ClassifyResult<T>> {
-      // `create`, not `parse`: after a fallback, the response holds the declined
-      // model's unfinished JSON before the fallback block, and `parse` throws on it.
+      // No `output_config.format`: a schema there changes the cached prefix, so
+      // classify and reply would each cache their own copy of the prompt. The
+      // note asks for JSON and the schema is checked here instead. Measured with
+      // `npm run try`: with a format, the reply call never read classify's cache.
       const response = await sdk().beta.messages.create({
         ...baseParams(request),
         max_tokens: 4_000,
-        output_config: { effort, format: zodOutputFormat(schema) },
+        output_config: { effort },
       });
       const usage = usageOf(response);
       if (response.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
-      let json: unknown;
-      try {
-        json = JSON.parse(finalText(response.content));
-      } catch {
-        return { ok: false, reason: "invalid", usage };
+      // The answer is the last object in the text that matches the schema, so a
+      // code fence, a sentence, or an echoed template around it doesn't matter.
+      for (const candidate of jsonObjects(finalText(response.content)).reverse()) {
+        let json: unknown;
+        try {
+          json = JSON.parse(candidate);
+        } catch {
+          continue;
+        }
+        const parsed = schema.safeParse(json);
+        if (parsed.success) return { ok: true, value: parsed.data, usage };
       }
-      const parsed = schema.safeParse(json);
-      return parsed.success ? { ok: true, value: parsed.data, usage } : { ok: false, reason: "invalid", usage };
+      return { ok: false, reason: "invalid", usage };
     },
 
     async *stream(request: ModelRequest): AsyncIterable<StreamEvent> {
@@ -93,6 +99,28 @@ function finalText(content: Anthropic.Beta.Messages.BetaContentBlock[]): string 
     .slice(start)
     .flatMap((b) => (b.type === "text" ? [b.text] : []))
     .join("");
+}
+
+/** Every top-level balanced {...} span in the text, in order. Braces inside strings are skipped. */
+export function jsonObjects(text: string): string[] {
+  const spans: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"' && depth > 0) {
+      inString = true;
+    } else if (ch === "{") {
+      if (depth++ === 0) start = i;
+    } else if (ch === "}" && depth > 0) {
+      if (--depth === 0) spans.push(text.slice(start, i + 1));
+    }
+  }
+  return spans;
 }
 
 function usageOf(message: Anthropic.Beta.Messages.BetaMessage): Usage {

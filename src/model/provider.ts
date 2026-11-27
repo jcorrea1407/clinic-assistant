@@ -41,7 +41,7 @@ export type StreamEvent =
   | { type: "end"; stopReason: "end_turn" | "max_tokens" | "refusal" | "other"; usage: Usage };
 
 export interface ModelProvider {
-  /** Returns structured output that matches `schema`. */
+  /** Returns JSON output, checked against `schema`. */
   classify<T>(request: ModelRequest, schema: z.ZodType<T>): Promise<ClassifyResult<T>>;
   /** Streams a plain-text reply. */
   stream(request: ModelRequest): AsyncIterable<StreamEvent>;
