@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { practitionerLabel } from "../facts/labels.js";
 import type { PublicFactSheet } from "../facts/schema.js";
 import type { ChatMessage, ModelProvider, Usage } from "../model/provider.js";
 
@@ -71,9 +72,7 @@ export function practitionersFor(facts: PublicFactSheet, concernSlug: string | n
   return concern.whoTreats.flatMap((slug) => {
     const p = facts.collections.practitioners.find((x) => x.slug === slug);
     if (!p) return [];
-    const title = p.displayTitle.charAt(0).toLowerCase() + p.displayTitle.slice(1);
-    const name = p.honorific ? `${p.honorific} ${p.name}` : p.name;
-    return [{ slug: p.slug, label: `${name}, ${title}`, bookingUrl: p.bookingUrl }];
+    return [{ slug: p.slug, label: practitionerLabel(p), bookingUrl: p.bookingUrl }];
   });
 }
 
