@@ -89,6 +89,17 @@ export const FactSheetSchema = z
   .superRefine((sheet, ctx) => {
     const { collections } = sheet;
 
+    // The chat endpoint prints these itself, so every sheet must have them.
+    for (const required of ["red-flag-message", "phone"]) {
+      if (!collections.clinicFacts.some((f) => f.slug === required)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["collections", "clinicFacts"],
+          message: `Missing the required clinic fact "${required}"`,
+        });
+      }
+    }
+
     // A public rule must say where it comes from. Concerns and practitioners have
     // no source fields, so they can only be clinic policy.
     for (const [name, lines] of Object.entries(collections)) {
