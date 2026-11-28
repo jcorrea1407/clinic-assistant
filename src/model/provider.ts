@@ -4,8 +4,8 @@ import { createAnthropicProvider } from "./anthropic.js";
 import { createOpenAIProvider } from "./openai.js";
 
 // The one seam between the assistant and a model vendor. Nothing outside
-// src/model knows which SDK is in use, so an OpenAI adapter (for the model
-// comparison in ADR 0002) only adds a file here.
+// src/model knows which SDK is in use: each vendor is one adapter here
+// (Anthropic and OpenAI; Upland runs on OpenAI).
 
 export interface ChatMessage {
   role: "user" | "assistant";

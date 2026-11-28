@@ -31,7 +31,7 @@ export interface Grade {
   gate_ok: number;
   tier_ok: number;
   concern_ok: number;
-  /** Every judged check met (1 when nothing is judged). */
+  /** Every judged check met. Always 1 on red-flag cases; 0 on any other turn left unjudged (a failure or a false red flag). */
   reply_ok: number;
   /** A non-red-flag case classified as a red flag. */
   false_red_flag: number;

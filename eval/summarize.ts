@@ -41,7 +41,9 @@ const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}% (${n}/
 const money = (x: number | undefined) => (x === undefined ? "not measured" : `$${x.toFixed(4)}`);
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
-  return s.length ? s[Math.floor(s.length / 2)]! : 0;
+  if (!s.length) return 0;
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
 };
 
 /** Cost of the assistant's own calls in one row, priced per call by the model that answered. */
@@ -68,17 +70,28 @@ const overview: string[] = [
 ];
 
 for (const variant of VARIANTS) {
-  const rows = readJsonl<Row>(join(flowDir, variant, "results.jsonl"));
+  const allRows = readJsonl<Row>(join(flowDir, variant, "results.jsonl"));
+  // Rows for a case id that's no longer in cases.json are left out, with a warning.
+  const stale = [...new Set(allRows.filter((r) => !groupOf.has(r.prompt_id)).map((r) => r.prompt_id))];
+  if (stale.length) console.warn(`${variant}: skipping rows for cases no longer in cases.json: ${stale.join(", ")}`);
+  const rows = allRows.filter((r) => groupOf.has(r.prompt_id));
   if (!rows.length) continue;
-  const errors = readJsonl<{ prompt_id: string; rep: number }>(join(flowDir, variant, "errors.jsonl"));
+  const graded = new Set(rows.map((r) => `${r.prompt_id}#${r.rep}`));
+  // A failed attempt that a later run graded is resolved; the rest are still missing.
+  const errors = readJsonl<{ prompt_id: string; rep: number }>(join(flowDir, variant, "errors.jsonl")).filter(
+    (e) => !graded.has(`${e.prompt_id}#${e.rep}`),
+  );
   const model = rows[0]!.requested_model;
   const effort = rows[0]!.effort;
   const repsByCase = new Map<string, Row[]>();
   for (const r of rows) repsByCase.set(r.prompt_id, [...(repsByCase.get(r.prompt_id) ?? []), r]);
+  // Every case must have every rep the run asked for, not just one.
+  const expectedReps = Math.max(...rows.map((r) => r.rep)) + 1;
+  const complete = (id: string) => (repsByCase.get(id)?.length ?? 0) === expectedReps;
 
   const gateCases = cases.filter((c) => HARD_GATE_GROUPS.includes(c.group));
   const gateMisses = rows.filter((r) => !r.grade.gate_ok).map((r) => `${r.prompt_id} rep${r.rep}`);
-  const gateMissing = gateCases.filter((c) => !repsByCase.has(c.id)).map((c) => c.id);
+  const gateMissing = gateCases.filter((c) => !complete(c.id)).map((c) => c.id);
   const gate = gateMisses.length ? `FAIL (${gateMisses.length})` : gateMissing.length ? "incomplete" : "pass";
 
   const scored = rows.filter((r) => !HARD_GATE_GROUPS.includes(groupOf.get(r.prompt_id)!));
@@ -96,7 +109,7 @@ for (const variant of VARIANTS) {
   overview.push(
     `| ${model} (${effort}) | ${rows.length}${errors.length ? `, ${errors.length} errors` : ""} | ${gate} | ${pct(sum("pass", scored), scored.length)} | ${pct(sum("false_red_flag", nonRedFlag), nonRedFlag.length)} | ${pct(sum("json_ok"), rows.length)} | ${rows.filter((r) => r.meta.failure_shown).length} | ${rows.filter((r) => r.meta.fallback).length} | ${money(meanCost)} | ${median(rows.map((r) => r.latency_s)).toFixed(1)}s |`,
   );
-  if (gate === "pass" && meanCost !== undefined && repsByCase.size === cases.length) eligible.push({ model, cost: meanCost });
+  if (gate === "pass" && meanCost !== undefined && cases.every((c) => complete(c.id))) eligible.push({ model, cost: meanCost });
 
   const byGroup = GROUPS.map((g) => {
     const rs = rows.filter((r) => groupOf.get(r.prompt_id) === g);
@@ -115,7 +128,7 @@ for (const variant of VARIANTS) {
       "|---|---|---|---|",
       ...byGroup,
       "",
-      `Gate misses: ${gateMisses.join(", ") || "none"}.${gateMissing.length ? ` Not yet run: ${gateMissing.join(", ")}.` : ""}`,
+      `Gate misses: ${gateMisses.join(", ") || "none"}.${gateMissing.length ? ` Missing reps: ${gateMissing.join(", ")}.${errors.length ? ` Unresolved errors: ${errors.length}.` : ""}` : ""}`,
       "",
       `Cases with a failed rep: ${failing.join(", ") || "none"}.`,
       "",

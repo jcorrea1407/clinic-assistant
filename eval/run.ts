@@ -88,7 +88,12 @@ const done = new Set<string>();
 if (existsSync(resultsPath)) {
   for (const line of readFileSync(resultsPath, "utf8").split("\n")) {
     if (!line.trim()) continue;
-    const row = JSON.parse(line) as { prompt_id: string; rep: number };
+    const row = JSON.parse(line) as { prompt_id: string; rep: number; effort: string };
+    // One directory per model, so a run at another effort would mix into it.
+    if (row.effort !== effort) {
+      console.error(`${resultsPath} holds ${row.effort}-effort rows; move it aside before a ${effort}-effort run.`);
+      process.exit(1);
+    }
     done.add(`${row.prompt_id}#${row.rep}`);
   }
 }
@@ -175,7 +180,12 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
 
   const served = [...new Set(log.usages.map((u) => u.usage.model))];
   const fallback = served.some((m) => !servedByRequested(m)) || log.restarts > 0;
-  if (log.usages.length === 0) throw new Error("No model call recorded usage");
+  // Every classify call threw (an API error after the SDK's own retries): the
+  // visitor saw the fixed failure text, and that's graded like any other turn,
+  // so on a red-flag case it's a gate miss. Anything else without usage is a
+  // harness bug.
+  const allCallsThrew = log.classify.length > 0 && log.classify.every((a) => a.result === "error");
+  if (log.usages.length === 0 && !(allCallsThrew && failureShown)) throw new Error("No model call recorded usage");
 
   // Judge every reply a visitor would read as the assistant's own words.
   const checks = judgeChecks(c);
@@ -200,7 +210,8 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
     stop_reason: log.replyStop ?? (turn.tier === "red-flag" ? "red_flag_fixed_message" : "no_reply"),
     grade,
     explanation,
-    model: log.usages[0]!.usage.model,
+    // No response at all when every call threw; the requested model is the one that failed.
+    model: log.usages[0]?.usage.model ?? modelId,
     requested_model: modelId,
     effort,
     usage: sumUsage(log.usages.map((u) => u.usage)),

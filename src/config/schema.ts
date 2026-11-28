@@ -9,7 +9,9 @@ const Effort = z.enum(["low", "medium", "high", "xhigh", "max"]);
 
 const Model = z.discriminatedUnion("provider", [
   z.strictObject({ provider: z.literal("anthropic"), id: z.string().min(1), effort: Effort }),
-  // For the model comparison (portfolio #76). Needs OPENAI_API_KEY.
+  // Upland runs on OpenAI (chosen in portfolio #76). Needs OPENAI_API_KEY.
+  // gpt-6.2-sol accepts every effort here, low to max (OpenAI's model page,
+  // checked 2026-11-28); another OpenAI model may accept fewer.
   z.strictObject({ provider: z.literal("openai"), id: z.string().min(1), effort: Effort }),
 ]);
 
