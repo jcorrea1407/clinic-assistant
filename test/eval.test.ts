@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { endWithNewline, readJsonl } from "../eval/jsonl.js";
 import { loadAllClients } from "../src/config/load.js";
 import { type EvalCase, checkAgainstFacts, judgeChecks, loadCases } from "../eval/cases.js";
-import { type CheckVerdict, type TurnRecord, gradeTurn } from "../eval/grade.js";
+import { type CheckVerdict, type TurnRecord, gradeTurn, isServingFailure } from "../eval/grade.js";
 import { costOf } from "../eval/prices.js";
 
 // The test set's own rules, checked without calling any model: the case file
@@ -82,6 +82,27 @@ describe("grading", () => {
   it("fails an empty or unjudged reply", () => {
     const f3 = byId("F3");
     expect(gradeTurn(f3, turn({ reply: "" }), RED, judgeChecks(f3), undefined)).toMatchObject({ pass: 0, reply_ok: 0 });
+  });
+});
+
+describe("serving failures (retried, not graded)", () => {
+  it.each([
+    [["error", "error"], false, true],
+    [["invalid", "error"], false, true],
+    [["error", "invalid"], false, true],
+    [["invalid", "invalid"], false, false],
+    [["error", "refusal"], false, false],
+    [["refusal"], false, false],
+    [["ok"], true, true],
+    [["ok"], false, false],
+  ] as const)("attempts %j, stream threw %s → %s", (attempts, streamThrew, expected) => {
+    expect(isServingFailure([...attempts], streamThrew)).toBe(expected);
+  });
+
+  it("doesn't count an attempt lost to an API error against the JSON parse rate", () => {
+    const f3 = byId("F3");
+    const g = gradeTurn(f3, turn({ classifyAttempts: ["error", "ok"] }), RED, judgeChecks(f3), allMet(f3));
+    expect(g.json_ok).toBe(1);
   });
 });
 

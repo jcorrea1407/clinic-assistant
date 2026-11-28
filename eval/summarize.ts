@@ -79,7 +79,6 @@ for (const variant of VARIANTS) {
   });
   const dropped = allRows.length - rows.length - allRows.filter((r) => !groupOf.has(r.prompt_id)).length;
   if (dropped) console.warn(`${variant}: left out ${dropped} rows (rep ${STANDARD_REPS} or above, a duplicate, or no model call)`);
-  if (!rows.length) continue;
   const graded = new Set(rows.map((r) => `${r.prompt_id}#${r.rep}`));
   // Unresolved errors: one per (case, rep) that failed and no later run graded.
   const errors = [
@@ -91,6 +90,11 @@ for (const variant of VARIANTS) {
         .filter((key) => !graded.has(key)),
     ),
   ];
+  if (!rows.length) {
+    // A run where every attempt failed still shows up, as failed rather than missing.
+    if (errors.length) overview.push(`| ${variant} | 0, ${errors.length} errors | incomplete | – | – | – | – | – | not measured | – |`);
+    continue;
+  }
   const model = rows[0]!.requested_model;
   const effort = rows[0]!.effort;
   const repsByCase = new Map<string, Row[]>();

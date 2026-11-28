@@ -9,7 +9,7 @@ import type { ChatMessage, ClassifyResult, ModelProvider, Usage } from "../src/m
 import { providerFor } from "../src/model/provider.js";
 import { buildSystemPrompt } from "../src/prompt/system.js";
 import { type EvalCase, HARD_GATE_GROUPS, STANDARD_REPS, checkAgainstFacts, judgeChecks, loadCases } from "./cases.js";
-import { type CheckVerdict, type TurnRecord, gradeTurn } from "./grade.js";
+import { type CheckVerdict, type TurnRecord, gradeTurn, isServingFailure } from "./grade.js";
 import { JudgeError, createJudge, judgeSystemPrompt } from "./judge.js";
 
 // Runs the test set against one model and grades every reply. Costs real
@@ -61,7 +61,7 @@ const reps = positiveInt("reps", args.reps);
 if (reps > STANDARD_REPS) throw new Error(`--reps can be at most ${STANDARD_REPS} (STANDARD_REPS in eval/cases.ts)`);
 const concurrency = positiveInt("concurrency", args.concurrency);
 const timeoutS = positiveInt("timeout-s", args["timeout-s"]);
-// Node fires any longer setTimeout after 1 ms, which would time out every case.
+// Well under Node's setTimeout limit (2^31-1 ms, about 24.8 days), past which it fires after 1 ms.
 if (timeoutS > 86_400) throw new Error("--timeout-s can be at most 86400 (a day)");
 const timeoutMs = timeoutS * 1000;
 
@@ -95,7 +95,8 @@ const done = new Set(results.filter((row) => (row.meta?.calls?.length ?? 0) > 0)
 
 mkdirSync(join(outDir, "traces"), { recursive: true });
 // A killed run can leave a half-written last line. End it, so the first row
-// appended now starts on its own line instead of joining the broken one.
+// appended now starts on its own line instead of joining the broken one. The
+// fragment stays in the file, and readJsonl warns about it on every read.
 for (const path of [resultsPath, errorsPath]) endWithNewline(path);
 if (entry.variant !== "baseline") {
   writeFileSync(join(outDir, "change.md"), `${modelId} at ${effort} effort, in place of claude-opus-5-5\n`);
@@ -206,16 +207,15 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
 
   const served = [...new Set(log.usages.map((u) => u.usage.model))];
   const fallback = served.some((m) => !servedByRequested(m)) || log.restarts > 0;
-  // The failure text came from an API error (an outage, a rate limit after the
-  // SDK's own retries, a missing key), not from the model's output: a classify
-  // call or the reply stream threw. That says nothing about the model, so it
-  // goes to errors.jsonl and is retried on the next run instead of being graded.
+  // Failure text caused by an API error (an outage, a rate limit after the SDK's
+  // own retries, a missing key) says nothing about the model, so the turn goes
+  // to errors.jsonl and is retried on the next run instead of being graded.
   // Until it is, the summary shows the case as missing a rep, so the gate can't
-  // pass. Failure text from output that didn't parse, or a refusal, is the
-  // model's, and is graded. The failure text follows the last classify attempt,
-  // so only that attempt decides: an API error then a refusal is a refusal.
-  const apiError = log.classify.at(-1)?.result === "error" || log.streamThrew;
-  if (failureShown && apiError) throw new ServingError("a model call failed, so the turn showed the failure text");
+  // pass. isServingFailure (grade.ts, tested) decides which failures those are.
+  const turnAttempts = log.classify.map((a) => a.result);
+  if (failureShown && isServingFailure(turnAttempts, log.streamThrew)) {
+    throw new ServingError("a model call failed, so the turn showed the failure text");
+  }
   if (log.usages.length === 0) throw new Error("No model call recorded usage");
 
   // Judge every reply a visitor would read as the assistant's own words.
