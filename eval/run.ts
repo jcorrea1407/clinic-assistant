@@ -1,5 +1,6 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { endWithNewline, readJsonl } from "./jsonl.js";
 import { parseArgs } from "node:util";
 import { type PractitionerLink, type Tier, runTurn } from "../src/chat/turn.js";
 import { loadAllClients } from "../src/config/load.js";
@@ -8,7 +9,7 @@ import type { ChatMessage, ClassifyResult, ModelProvider, Usage } from "../src/m
 import { providerFor } from "../src/model/provider.js";
 import { buildSystemPrompt } from "../src/prompt/system.js";
 import { type EvalCase, HARD_GATE_GROUPS, STANDARD_REPS, checkAgainstFacts, judgeChecks, loadCases } from "./cases.js";
-import { type CheckVerdict, type TurnRecord, gradeTurn } from "./grade.js";
+import { type CheckVerdict, type TurnRecord, gradeTurn, isServingFailure } from "./grade.js";
 import { JudgeError, createJudge, judgeSystemPrompt } from "./judge.js";
 
 // Runs the test set against one model and grades every reply. Costs real
@@ -50,9 +51,19 @@ if (!entry) {
 }
 const effort = args.effort as ModelConfig["effort"];
 if (!["low", "medium", "high", "xhigh", "max"].includes(effort)) throw new Error(`Bad --effort ${effort}`);
-const reps = Number(args.reps);
-const concurrency = Number(args.concurrency);
-const timeoutMs = Number(args["timeout-s"]) * 1000;
+function positiveInt(name: string, value: string | undefined): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`--${name} must be a whole number of 1 or more, not "${value}"`);
+  return n;
+}
+const reps = positiveInt("reps", args.reps);
+// More reps than a full run can never be summarised as complete, and resume can't remove them.
+if (reps > STANDARD_REPS) throw new Error(`--reps can be at most ${STANDARD_REPS} (STANDARD_REPS in eval/cases.ts)`);
+const concurrency = positiveInt("concurrency", args.concurrency);
+const timeoutS = positiveInt("timeout-s", args["timeout-s"]);
+// Well under Node's setTimeout limit (2^31-1 ms, about 24.8 days), past which it fires after 1 ms.
+if (timeoutS > 86_400) throw new Error("--timeout-s can be at most 86400 (a day)");
+const timeoutMs = timeoutS * 1000;
 
 try {
   process.loadEnvFile(".env");
@@ -65,24 +76,28 @@ const outDir = join(flowDir, entry.variant);
 const resultsPath = join(outDir, "results.jsonl");
 const errorsPath = join(outDir, "errors.jsonl");
 
-const readRows = (path: string) =>
-  existsSync(path)
-    ? readFileSync(path, "utf8")
-        .split("\n")
-        .filter((line) => line.trim())
-        .map((line) => JSON.parse(line) as { prompt_id: string; rep: number; effort?: string })
-    : [];
+type StoredRow = { prompt_id: string; rep: number; effort?: string; meta?: { calls?: unknown[] } };
+const results = readJsonl<StoredRow>(resultsPath);
+const errorRows = readJsonl<StoredRow>(errorsPath);
 
 // One directory per model, so a run at another effort would mix into it.
-// Checked before anything in the directory is written.
-const otherEffort = [...readRows(resultsPath), ...readRows(errorsPath)].find((row) => row.effort !== effort);
+// Checked before anything in the directory is written. Error rows from before
+// they carried an effort are taken to match.
+const otherEffort = [...results, ...errorRows.filter((row) => row.effort !== undefined)].find((row) => row.effort !== effort);
 if (otherEffort) {
   console.error(`${outDir} holds ${otherEffort.effort ?? "unlabelled"}-effort rows. Move the whole directory aside before a ${effort}-effort run.`);
   process.exit(1);
 }
-const done = new Set(readRows(resultsPath).map((row) => `${row.prompt_id}#${row.rep}`));
+// A row where no model call returned anything was graded by an earlier version
+// of this runner; it's an outage, not a result, so it's run again. The summary
+// leaves out the same rows.
+const done = new Set(results.filter((row) => (row.meta?.calls?.length ?? 0) > 0).map((row) => `${row.prompt_id}#${row.rep}`));
 
 mkdirSync(join(outDir, "traces"), { recursive: true });
+// A killed run can leave a half-written last line. End it, so the first row
+// appended now starts on its own line instead of joining the broken one. The
+// fragment stays in the file, and readJsonl warns about it on every read.
+for (const path of [resultsPath, errorsPath]) endWithNewline(path);
 if (entry.variant !== "baseline") {
   writeFileSync(join(outDir, "change.md"), `${modelId} at ${effort} effort, in place of claude-opus-5-5\n`);
 }
@@ -108,6 +123,8 @@ function recording(inner: ModelProvider) {
   const log = {
     classify: [] as { result: "ok" | "invalid" | "refusal" | "error"; value?: { tier: Tier; concern: string | null } }[],
     replyStop: undefined as string | undefined,
+    /** The reply stream threw (an API error mid-reply). */
+    streamThrew: false,
     restarts: 0,
     usages: [] as { step: string; usage: Usage }[],
   };
@@ -123,10 +140,15 @@ function recording(inner: ModelProvider) {
       }
     },
     async *stream(request) {
-      for await (const event of inner.stream(request)) {
-        if (event.type === "restart") log.restarts++;
-        if (event.type === "end") log.replyStop = event.stopReason;
-        yield event;
+      try {
+        for await (const event of inner.stream(request)) {
+          if (event.type === "restart") log.restarts++;
+          if (event.type === "end") log.replyStop = event.stopReason;
+          yield event;
+        }
+      } catch (error) {
+        log.streamThrew = true;
+        throw error;
       }
     },
   };
@@ -185,14 +207,16 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
 
   const served = [...new Set(log.usages.map((u) => u.usage.model))];
   const fallback = served.some((m) => !servedByRequested(m)) || log.restarts > 0;
-  // No call returned anything: an outage, a rate limit after the SDK's own
-  // retries, or a missing key. That says nothing about the model, so it goes to
-  // errors.jsonl and is retried on the next run, instead of being graded. Until
-  // it is, the summary shows the case as missing a rep, so the gate can't pass.
-  if (log.usages.length === 0) {
-    const allCallsThrew = log.classify.length > 0 && log.classify.every((a) => a.result === "error");
-    throw allCallsThrew ? new ServingError("every model call failed") : new Error("No model call recorded usage");
+  // Failure text caused by an API error (an outage, a rate limit after the SDK's
+  // own retries, a missing key) says nothing about the model, so the turn goes
+  // to errors.jsonl and is retried on the next run instead of being graded.
+  // Until it is, the summary shows the case as missing a rep, so the gate can't
+  // pass. isServingFailure (grade.ts, tested) decides which failures those are.
+  const turnAttempts = log.classify.map((a) => a.result);
+  if (failureShown && isServingFailure(turnAttempts, log.streamThrew)) {
+    throw new ServingError("a model call failed, so the turn showed the failure text");
   }
+  if (log.usages.length === 0) throw new Error("No model call recorded usage");
 
   // Judge every reply a visitor would read as the assistant's own words.
   const checks = judgeChecks(c);
@@ -269,7 +293,11 @@ function withTimeout<T>(run: (abandoned: { value: boolean }) => Promise<T>, ms: 
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Every model call in a turn failed, so there's nothing of the model's to grade. */
+/**
+ * The turn showed the failure text because of an API error, not because of
+ * anything the model wrote. Which failures count is decided by
+ * isServingFailure in grade.ts.
+ */
 class ServingError extends Error {}
 
 function failureClass(error: unknown): string {
