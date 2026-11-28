@@ -13,10 +13,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "try": "tsx scripts/try.ts"
+    "try": "tsx scripts/try.ts",
+    "eval": "tsx eval/run.ts",
+    "eval:summary": "tsx eval/summarize.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
+    "openai": "7.57.0",
     "resend": "6.38.1",
     "zod": "^4.6.7"
   },

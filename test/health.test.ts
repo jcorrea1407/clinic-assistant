@@ -7,7 +7,7 @@ describe("GET /api/health", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
-      clients: [{ id: "upland", model: "claude-opus-5-5" }],
+      clients: [{ id: "upland", model: "gpt-6.2-sol" }],
     });
   });
 

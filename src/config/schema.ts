@@ -5,11 +5,13 @@ const FactsSource = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local-json"), data: z.unknown() }),
 ]);
 
-const Model = z.strictObject({
-  provider: z.literal("anthropic"),
-  id: z.string().min(1),
-  effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
-});
+const Effort = z.enum(["low", "medium", "high", "xhigh", "max"]);
+
+const Model = z.discriminatedUnion("provider", [
+  z.strictObject({ provider: z.literal("anthropic"), id: z.string().min(1), effort: Effort }),
+  // For the model comparison (portfolio #76). Needs OPENAI_API_KEY.
+  z.strictObject({ provider: z.literal("openai"), id: z.string().min(1), effort: Effort }),
+]);
 
 export const ClientConfigSchema = z.strictObject({
   /** Used in URLs and logs. */

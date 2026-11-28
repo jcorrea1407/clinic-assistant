@@ -77,6 +77,16 @@ describe("Anthropic provider", () => {
     ]);
   });
 
+  it("leaves out fallbacks for a model without server-side fallback", async () => {
+    const { create, client } = fakeClient();
+    await createAnthropicProvider({ model: "claude-haiku-5-5", effort: "low", client }).classify(request, schema);
+
+    const params = create.mock.calls[0]![0];
+    expect(params.model).toBe("claude-haiku-5-5");
+    expect(params).not.toHaveProperty("fallbacks");
+    expect(params).not.toHaveProperty("betas");
+  });
+
   it("returns the parsed classification with usage", async () => {
     const { client } = fakeClient();
     expect(await provider(client).classify(request, schema)).toEqual({

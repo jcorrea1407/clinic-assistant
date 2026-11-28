@@ -1,0 +1,301 @@
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { parseArgs } from "node:util";
+import { type PractitionerLink, type Tier, runTurn } from "../src/chat/turn.js";
+import { loadAllClients } from "../src/config/load.js";
+import type { ModelConfig } from "../src/config/schema.js";
+import type { ChatMessage, ClassifyResult, ModelProvider, Usage } from "../src/model/provider.js";
+import { providerFor } from "../src/model/provider.js";
+import { buildSystemPrompt } from "../src/prompt/system.js";
+import { type EvalCase, HARD_GATE_GROUPS, checkAgainstFacts, judgeChecks, loadCases } from "./cases.js";
+import { type CheckVerdict, type TurnRecord, gradeTurn } from "./grade.js";
+import { JudgeError, createJudge, judgeSystemPrompt } from "./judge.js";
+
+// Runs the test set against one model and grades every reply. Costs real
+// money: every case makes two or three model calls plus a judge call.
+//
+//   npm run eval -- --model claude-sonnet-5-5             all 40 cases, 3 reps
+//   npm run eval -- --model claude-opus-5-5 --cases R1,A6 --reps 1
+//
+// Results go to eval/runs/model-comparison/<variant>/: results.jsonl (one row
+// per case and rep, written as each finishes), traces/, and errors.jsonl for
+// attempts that failed before they could be graded. Re-running skips every
+// (case, rep) already in results.jsonl, so a crashed run resumes where it
+// stopped, and failed attempts are retried.
+
+/** Each model gets a fixed variant directory; the report builder needs baseline / v<N>. */
+const MODELS: Record<string, { variant: string; provider: ModelConfig["provider"] }> = {
+  "claude-opus-5-5": { variant: "baseline", provider: "anthropic" },
+  "claude-sonnet-5-5": { variant: "v1", provider: "anthropic" },
+  "claude-haiku-5-5": { variant: "v2", provider: "anthropic" },
+  "gpt-6.2-sol": { variant: "v3", provider: "openai" },
+};
+
+const { values: args } = parseArgs({
+  options: {
+    model: { type: "string" },
+    effort: { type: "string", default: "low" },
+    reps: { type: "string", default: "3" },
+    cases: { type: "string" },
+    concurrency: { type: "string", default: "4" },
+    "timeout-s": { type: "string", default: "300" },
+  },
+});
+
+const modelId = args.model ?? "";
+const entry = MODELS[modelId];
+if (!entry) {
+  console.error(`--model must be one of: ${Object.keys(MODELS).join(", ")}`);
+  process.exit(1);
+}
+const effort = args.effort as ModelConfig["effort"];
+if (!["low", "medium", "high", "xhigh", "max"].includes(effort)) throw new Error(`Bad --effort ${effort}`);
+const reps = Number(args.reps);
+const concurrency = Number(args.concurrency);
+const timeoutMs = Number(args["timeout-s"]) * 1000;
+
+try {
+  process.loadEnvFile(".env");
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
+
+const flowDir = join("eval", "runs", "model-comparison");
+const outDir = join(flowDir, entry.variant);
+mkdirSync(join(outDir, "traces"), { recursive: true });
+if (entry.variant !== "baseline") {
+  writeFileSync(join(outDir, "change.md"), `${modelId} at ${effort} effort, in place of claude-opus-5-5\n`);
+}
+
+const [client] = await loadAllClients();
+if (!client) throw new Error("No clients configured");
+const facts = client.facts;
+const systemPrompt = buildSystemPrompt(facts);
+const redFlagMessage = facts.collections.clinicFacts.find((f) => f.slug === "red-flag-message")!.value;
+const judge = createJudge(judgeSystemPrompt(facts));
+const model: ModelConfig = { provider: entry.provider, id: modelId, effort };
+
+let cases = loadCases();
+checkAgainstFacts(cases, facts);
+if (args.cases) {
+  const wanted = new Set(args.cases.split(","));
+  cases = cases.filter((c) => wanted.has(c.id));
+  if (cases.length !== wanted.size) throw new Error(`Unknown case in --cases ${args.cases}`);
+}
+
+const resultsPath = join(outDir, "results.jsonl");
+const done = new Set<string>();
+if (existsSync(resultsPath)) {
+  for (const line of readFileSync(resultsPath, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const row = JSON.parse(line) as { prompt_id: string; rep: number };
+    done.add(`${row.prompt_id}#${row.rep}`);
+  }
+}
+
+/** Wraps the real provider to record each classify attempt and the reply's stop reason. */
+function recording(inner: ModelProvider) {
+  const log = {
+    classify: [] as { result: "ok" | "invalid" | "refusal" | "error"; value?: { tier: Tier; concern: string | null } }[],
+    replyStop: undefined as string | undefined,
+    restarts: 0,
+    usages: [] as { step: string; usage: Usage }[],
+  };
+  const provider: ModelProvider = {
+    async classify(request, schema) {
+      try {
+        const result = (await inner.classify(request, schema)) as ClassifyResult<{ tier: Tier; concern: string | null }>;
+        log.classify.push(result.ok ? { result: "ok", value: result.value } : { result: result.reason });
+        return result as never;
+      } catch (error) {
+        log.classify.push({ result: "error" });
+        throw error;
+      }
+    },
+    async *stream(request) {
+      for await (const event of inner.stream(request)) {
+        if (event.type === "restart") log.restarts++;
+        if (event.type === "end") log.replyStop = event.stopReason;
+        yield event;
+      }
+    },
+  };
+  return { provider, log };
+}
+
+const sumUsage = (usages: Usage[]) => ({
+  input_tokens: usages.reduce((n, u) => n + u.inputTokens, 0),
+  output_tokens: usages.reduce((n, u) => n + u.outputTokens, 0),
+  cache_read_input_tokens: usages.reduce((n, u) => n + u.cacheReadTokens, 0),
+  cache_creation_input_tokens: usages.reduce((n, u) => n + u.cacheWriteTokens, 0),
+});
+
+/** The configured model answered, allowing for a dated snapshot of the same name. */
+const servedByRequested = (served: string) => served === modelId || served.startsWith(`${modelId}-`);
+
+/** `abandoned` is set when the wall-clock ceiling fires, so a late finish never writes a row. */
+async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) {
+  const history: ChatMessage[] = c.history ?? [];
+  const messages: ChatMessage[] = [...history, { role: "user", content: c.message }];
+  const { provider, log } = recording(providerFor(model));
+
+  const started = performance.now();
+  let tier: Tier | undefined;
+  let practitioners: PractitionerLink[] = [];
+  let reply = "";
+  let ended = false;
+  let errored = false;
+  for await (const event of runTurn({
+    facts,
+    systemPrompt,
+    provider,
+    messages,
+    onUsage: (step, usage) => log.usages.push({ step, usage }),
+  })) {
+    if (event.type === "tier") ({ tier, practitioners } = event);
+    else if (event.type === "text") reply += event.text;
+    else if (event.type === "replace") reply = event.text;
+    else if (event.type === "error") {
+      reply = event.text;
+      errored = true;
+    } else if (event.type === "done") ended = event.ended;
+  }
+  const latency_s = (performance.now() - started) / 1000;
+
+  const lastOk = log.classify.findLast((a) => a.result === "ok");
+  const failureShown = errored || reply.startsWith("Sorry, something went wrong on my side.");
+  const turn: TurnRecord = {
+    tier: errored ? undefined : tier,
+    concern: lastOk?.value?.concern,
+    reply,
+    ended,
+    failureShown,
+    classifyAttempts: log.classify.map((a) => a.result),
+  };
+
+  const served = [...new Set(log.usages.map((u) => u.usage.model))];
+  const fallback = served.some((m) => !servedByRequested(m)) || log.restarts > 0;
+  if (log.usages.length === 0) throw new Error("No model call recorded usage");
+
+  // Judge every reply a visitor would read as the assistant's own words.
+  const checks = judgeChecks(c);
+  const judgeable = checks.length > 0 && !failureShown && turn.tier !== undefined && turn.tier !== "red-flag";
+  const judged = judgeable ? await judge({ history, message: c.message, reply, practitioners, checks }) : undefined;
+  const verdicts: CheckVerdict[] | undefined = judged?.verdicts;
+
+  const grade = gradeTurn(c, turn, redFlagMessage, checks, verdicts);
+  const explanation: Record<string, string> = {
+    tier_ok: `Got ${turn.tier ?? "no tier (classification failed)"}; accepted ${c.tiers.join(" or ")}.`,
+  };
+  if (c.concerns) explanation.concern_ok = `Got ${turn.concern ?? "none"}; accepted ${c.concerns.map((s) => s ?? "none").join(" or ")}.`;
+  if (verdicts) explanation.reply_ok = verdicts.map((v) => `${v.met ? "MET" : "NOT MET"} ${v.id}: ${v.reason}`).join("\n");
+
+  const prompt = [...history.map((m) => `${m.role === "user" ? "Visitor" : "Assistant"}: ${m.content}`), `Visitor: ${c.message}`].join("\n\n");
+  const row = {
+    prompt_id: c.id,
+    rep,
+    prompt,
+    tags: [c.group, HARD_GATE_GROUPS.includes(c.group) ? "hard gate" : "scored", ...(c.seed ? ["seed"] : [])],
+    status: "ok",
+    stop_reason: log.replyStop ?? (turn.tier === "red-flag" ? "red_flag_fixed_message" : "no_reply"),
+    grade,
+    explanation,
+    model: log.usages[0]!.usage.model,
+    requested_model: modelId,
+    effort,
+    usage: sumUsage(log.usages.map((u) => u.usage)),
+    ...(judged ? { judge_model: judged.model, judge_usage: judged.usage } : {}),
+    latency_s: Math.round(latency_s * 100) / 100,
+    meta: {
+      tier: turn.tier ?? null,
+      concern: turn.concern ?? null,
+      practitioners: practitioners.map((p) => p.label),
+      classify_attempts: turn.classifyAttempts,
+      reply_stop: log.replyStop ?? null,
+      served_models: served,
+      fallback,
+      failure_shown: failureShown,
+      calls: log.usages.map((u) => ({ step: u.step, ...u.usage })),
+      verdicts: verdicts ?? null,
+    },
+  };
+
+  const trace = [
+    { role: "system", content: systemPrompt },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: "user", content: c.message },
+    {
+      role: "system",
+      content: `[classify] attempts: ${turn.classifyAttempts.join(", ")}; tier: ${turn.tier ?? "none"}; concern: ${turn.concern ?? "none"}; booking buttons: ${row.meta.practitioners.join("; ") || "none"}`,
+    },
+    { role: "assistant", content: reply },
+    ...(verdicts ? [{ role: "system", content: `[judge: ${judged!.model}]\n${explanation.reply_ok}` }] : []),
+  ];
+  if (abandoned.value) throw new Error("finished after its timeout; not recorded");
+  writeFileSync(join(outDir, "traces", `${c.id}_rep${rep}.json`), JSON.stringify(trace, null, 2));
+  appendFileSync(resultsPath, `${JSON.stringify(row)}\n`);
+  return row;
+}
+
+function withTimeout<T>(run: (abandoned: { value: boolean }) => Promise<T>, ms: number): Promise<T> {
+  const abandoned = { value: false };
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      abandoned.value = true;
+      reject(new Error(`timeout after ${ms / 1000}s`));
+    }, ms);
+  });
+  const work = run(abandoned);
+  // The abandoned call may still reject later; that's expected and ignored.
+  work.catch(() => {});
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+function failureClass(error: unknown): string {
+  if (error instanceof JudgeError) return `judge-${error.kind}`;
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("timeout")) return "timeout";
+  return "harness-or-serving";
+}
+
+const jobs = cases.flatMap((c) => Array.from({ length: reps }, (_, rep) => ({ c, rep }))).filter(({ c, rep }) => !done.has(`${c.id}#${rep}`));
+console.log(`${modelId} (${effort}) → ${outDir}: ${jobs.length} to run, ${done.size} already done`);
+
+const started = performance.now();
+const rows: Awaited<ReturnType<typeof runCase>>[] = [];
+let failed = 0;
+let next = 0;
+async function work(max: number) {
+  while (next < Math.min(max, jobs.length)) {
+    const { c, rep } = jobs[next++]!;
+    {
+      try {
+        const row = await withTimeout((abandoned) => runCase(c, rep, abandoned), timeoutMs);
+        rows.push(row);
+        const mark = row.grade.pass ? "pass" : "FAIL";
+        console.log(`  ${c.id} rep${rep}: ${mark}${row.grade.gate_ok ? "" : " (GATE)"} · ${row.meta.tier ?? "no tier"} · ${row.latency_s}s`);
+      } catch (error) {
+        failed++;
+        const message = error instanceof Error ? error.message : String(error);
+        appendFileSync(
+          join(outDir, "errors.jsonl"),
+          `${JSON.stringify({ prompt_id: c.id, rep, class: failureClass(error), message, at: new Date().toISOString() })}\n`,
+        );
+        console.log(`  ${c.id} rep${rep}: ERROR (${failureClass(error)}) ${message}`);
+      }
+    }
+  }
+}
+// The first case runs alone, so it writes the prompt cache (and the judge's)
+// once; the rest then read it instead of each writing their own copy.
+await work(1);
+await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, () => work(jobs.length)));
+
+const passRate = rows.length ? rows.filter((r) => r.grade.pass).length / rows.length : 0;
+const gateMisses = rows.filter((r) => !r.grade.gate_ok).map((r) => `${r.prompt_id}#${r.rep}`);
+console.log(
+  `\nThis run: ${rows.length} graded, ${failed} errors, ${((performance.now() - started) / 1000).toFixed(0)}s. ` +
+    `Pass ${(passRate * 100).toFixed(0)}%. Gate misses: ${gateMisses.length ? gateMisses.join(", ") : "none"}.`,
+);
+console.log("Run `npm run eval:summary` for the full comparison.");

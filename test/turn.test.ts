@@ -86,10 +86,11 @@ describe("an advice request", () => {
     expect(calls.stream[0]!.note).toMatch(/asks for treatment advice\. Decline/);
   });
 
-  it("still offers booking when no concern fits", async () => {
+  it("offers the front desk, and says no buttons are shown, when no concern fits", async () => {
     const { provider, calls } = fakeProvider({ classify: classified("advice-request") });
     await turn(provider, [{ role: "user", content: "Should I take ibuprofen?" }]);
-    expect(calls.stream[0]!.note).toContain("offer to book an appointment or to pass a question to the front desk");
+    expect(calls.stream[0]!.note).toContain("offer to pass a question to the front desk");
+    expect(calls.stream[0]!.note).toContain("No booking buttons are shown");
   });
 });
 
@@ -99,6 +100,8 @@ describe("a question", () => {
     const events = await turn(provider);
     expect(events[0]).toEqual({ type: "tier", tier: "question", practitioners: [] });
     expect(calls.stream[0]!.note).toContain("Answer it from the fact sheet only");
+    // Otherwise the model points the visitor to buttons that aren't there.
+    expect(calls.stream[0]!.note).toContain("No booking buttons are shown");
   });
 });
 

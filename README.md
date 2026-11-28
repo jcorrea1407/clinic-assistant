@@ -2,7 +2,7 @@
 
 A front-desk assistant for clinics. It answers questions from a clinic's own fact sheet, routes a concern to the practitioner who treats it, shows a fixed emergency message for red flags, and hands everything else to the front desk. Each clinic is a client with its own config. It is deployed as Vercel Functions and embedded with a script-tag widget (coming in a later change).
 
-Upland Physio, Chiro & Massage, a made-up clinic, is the first client.
+Upland Physio, Chiro & Massage, a made-up clinic, is the first client. It runs on OpenAI's `gpt-6.2-sol` at low effort, chosen by the [model comparison](#model-comparison).
 
 ## Status
 
@@ -57,7 +57,7 @@ Measured on 2026-11-27 (see the examples below): both calls read the same roughl
 
 `npm run try` runs one conversation per tier against the real model and prints the tier, the reply and token usage. It costs a few cents per run.
 
-Recorded on 2026-11-27 with `claude-opus-5-5` at low effort. The cache was still warm from an earlier run, so the first call reads instead of writes.
+Recorded on 2026-11-27 with `claude-opus-5-5` at low effort, before the model comparison moved Upland to `gpt-6.2-sol`. The cache was still warm from an earlier run, so the first call reads instead of writes.
 
 ```text
 === concern ===
@@ -162,7 +162,8 @@ npm run build     # type-check, then validate every client config and fact sheet
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Vercel (Preview and Production) | Claude API key. Never commit it. |
+| `ANTHROPIC_API_KEY` | Vercel (Preview and Production); locally for the eval | Claude API key, for any client on a Claude model, and for the eval's judge. Never commit it. |
+| `OPENAI_API_KEY` | Vercel (Preview and Production) | OpenAI API key. Upland runs on `gpt-6.2-sol`, so chat needs it. Never commit it. |
 | `RESEND_API_KEY` | Vercel (Preview and Production) | Sends handoff emails. Without it, handoffs are refused. |
 | `MAIL_LOG_ONLY` | Local only | `1` prints handoff emails to the terminal instead of sending them. Ignored on Vercel. |
 | `MAIL_FROM` | Vercel, optional | The sender, as `Name <address>` on a domain verified in Resend. Defaults to Resend's test sender, `onboarding@resend.dev`. |
@@ -194,8 +195,9 @@ clients/<id>/config.ts        one client's config
 clients/<id>/fact-sheet.json  that client's facts (until the Webflow CMS takes over)
 src/config/                   config schema and loader
 src/facts/                    fact-sheet schema, FactSource, label helpers
-src/model/                    ModelProvider interface and the Anthropic adapter
+src/model/                    ModelProvider interface, the Anthropic and OpenAI adapters
 scripts/check-config.ts       runs in the build
+eval/                         the 40-case test set and model comparison (see eval/RESULTS.md)
 ```
 
 **Validated twice.** The build checks every client, and so does each function instance on its first request.
@@ -204,11 +206,17 @@ scripts/check-config.ts       runs in the build
 
 **FactSource.** `localJsonSource` reads the bundled JSON. A Webflow CMS source will replace it without changing anything downstream.
 
-**ModelProvider.** Two calls, both taking `{ system, messages, note }`: `classify(request, zodSchema)` returns JSON checked against the schema, and `stream(request)` yields text (plus a `restart` if a fallback model takes over partway), then a final `end` event with the stop reason and usage. Only `src/model/anthropic.ts` imports the Anthropic SDK, so another vendor is one more adapter. The Anthropic adapter:
+**ModelProvider.** Two calls, both taking `{ system, messages, note }`: `classify(request, zodSchema)` returns JSON checked against the schema, and `stream(request)` yields text (plus a `restart` if a fallback model takes over partway), then a final `end` event with the stop reason and usage. Only `src/model/anthropic.ts` imports the Anthropic SDK, and only `src/model/openai.ts` imports the OpenAI SDK. The Anthropic adapter:
 
-- uses the client's configured model (Upland: `claude-opus-5-5`, low effort);
-- turns on server-side refusal fallbacks (`server-side-fallback-2026-07-01`, `fallbacks: "default"`): if a safety classifier declines, the API retries on a fallback model in the same call, and `usage.model` says which model answered. The response then holds the declined model's partial output, a `fallback` block, then the fallback's output, so the adapter reads the classification only from after the last `fallback` block, and the stream restarts the reply there;
+- uses the client's configured model;
+- turns on server-side refusal fallbacks (`server-side-fallback-2026-07-01`, `fallbacks: "default"`) for the models that offer them, which excludes Claude Haiku 5.5: if a safety classifier declines, the API retries on a fallback model in the same call, and `usage.model` says which model answered. The response then holds the declined model's partial output, a `fallback` block, then the fallback's output, so the adapter reads the classification only from after the last `fallback` block, and the stream restarts the reply there;
 - sends the note as a mid-conversation system message after the conversation, and sets the cache breakpoints described under [Caching](#the-three-tiers).
+
+The OpenAI adapter uses the Responses API the same way: the note goes last as a developer message, with explicit cache breakpoints after the system prompt and on the latest visitor message. OpenAI has no server-side refusal fallback, so a refusal gets the fixed "can't help" text.
+
+## Model comparison
+
+`eval/` holds a 40-case test set: red flags (obvious and subtle), requests for advice, routing, facts, questions the fact sheet doesn't answer, and front-desk requests. `npm run eval -- --model <id>` runs it through the real `runTurn()` with Claude Fable 5.2 as the judge, and `npm run eval:summary` compares the models. Every run costs real money (about $2–5 per model). Results and the recommendation are in [`eval/RESULTS.md`](eval/RESULTS.md).
 
 ## Adding a client
 

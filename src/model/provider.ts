@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { ModelConfig } from "../config/schema.js";
 import { createAnthropicProvider } from "./anthropic.js";
+import { createOpenAIProvider } from "./openai.js";
 
 // The one seam between the assistant and a model vendor. Nothing outside
 // src/model knows which SDK is in use, so an OpenAI adapter (for the model
@@ -51,5 +52,7 @@ export function providerFor(model: ModelConfig): ModelProvider {
   switch (model.provider) {
     case "anthropic":
       return createAnthropicProvider({ model: model.id, effort: model.effort });
+    case "openai":
+      return createOpenAIProvider({ model: model.id, effort: model.effort });
   }
 }

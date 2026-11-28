@@ -1,0 +1,16 @@
+{
+  "metrics": [
+    { "id": "pass", "label": "Pass", "kind": "binary" },
+    { "id": "gate_ok", "label": "Hard gate", "kind": "binary" },
+    { "id": "tier_ok", "label": "Tier", "kind": "binary" },
+    { "id": "concern_ok", "label": "Concern", "kind": "binary" },
+    { "id": "reply_ok", "label": "Reply", "kind": "binary" },
+    { "id": "false_red_flag", "label": "False red flag", "kind": "binary", "better": "lower" },
+    { "id": "json_ok", "label": "JSON 1st try", "kind": "binary" }
+  ],
+  "perf_fields": [
+    { "id": "latency_s", "label": "Latency", "unit": "s" },
+    { "id": "in_tokens", "label": "In tokens" },
+    { "id": "out_tokens", "label": "Out tokens" }
+  ]
+}

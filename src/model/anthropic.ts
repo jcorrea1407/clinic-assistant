@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { z } from "zod";
+import { lastMatchingObject } from "./json.js";
 import type { ClassifyResult, ModelProvider, ModelRequest, StreamEvent, Usage } from "./provider.js";
+
+export { jsonObjects } from "./json.js";
 
 export interface AnthropicProviderOptions {
   model: string;
@@ -10,6 +13,20 @@ export interface AnthropicProviderOptions {
 }
 
 type Params = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
+
+// Models the API offers server-side refusal fallbacks for. Sending `fallbacks`
+// to any other model (Claude Haiku 5.5, for one) is an error.
+const SERVER_FALLBACK_MODELS = new Set([
+  "claude-fable-5-2",
+  "claude-fable-5-1",
+  "claude-opus-5-5",
+  "claude-opus-5",
+  "claude-sonnet-5-5",
+]);
+
+export function supportsServerFallback(model: string): boolean {
+  return SERVER_FALLBACK_MODELS.has(model);
+}
 
 export function createAnthropicProvider(options: AnthropicProviderOptions): ModelProvider {
   const { model, effort } = options;
@@ -28,10 +45,12 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
     );
     return {
       model,
-      betas: ["server-side-fallback-2026-07-01"],
       // If a safety classifier declines, the API re-runs the request on a
-      // fallback model inside the same call.
-      fallbacks: "default",
+      // fallback model inside the same call. Without it, a refusal ends the
+      // turn with the fixed "can't help" text.
+      ...(supportsServerFallback(model)
+        ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+        : {}),
       // The rules and the whole fact sheet: identical on every request, so cached.
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       // The note goes after the conversation, so it never changes the cached prefix.
@@ -52,19 +71,8 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Mode
       });
       const usage = usageOf(response);
       if (response.stop_reason === "refusal") return { ok: false, reason: "refusal", usage };
-      // The answer is the last object in the text that matches the schema, so a
-      // code fence, a sentence, or an echoed template around it doesn't matter.
-      for (const candidate of jsonObjects(finalText(response.content)).reverse()) {
-        let json: unknown;
-        try {
-          json = JSON.parse(candidate);
-        } catch {
-          continue;
-        }
-        const parsed = schema.safeParse(json);
-        if (parsed.success) return { ok: true, value: parsed.data, usage };
-      }
-      return { ok: false, reason: "invalid", usage };
+      const value = lastMatchingObject(finalText(response.content), schema);
+      return value.ok ? { ok: true, value: value.value, usage } : { ok: false, reason: "invalid", usage };
     },
 
     async *stream(request: ModelRequest): AsyncIterable<StreamEvent> {
@@ -99,28 +107,6 @@ function finalText(content: Anthropic.Beta.Messages.BetaContentBlock[]): string 
     .slice(start)
     .flatMap((b) => (b.type === "text" ? [b.text] : []))
     .join("");
-}
-
-/** Every top-level balanced {...} span in the text, in order. Braces inside strings are skipped. */
-export function jsonObjects(text: string): string[] {
-  const spans: string[] = [];
-  let depth = 0;
-  let start = -1;
-  let inString = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inString) {
-      if (ch === "\\") i++;
-      else if (ch === '"') inString = false;
-    } else if (ch === '"' && depth > 0) {
-      inString = true;
-    } else if (ch === "{") {
-      if (depth++ === 0) start = i;
-    } else if (ch === "}" && depth > 0) {
-      if (--depth === 0) spans.push(text.slice(start, i + 1));
-    }
-  }
-  return spans;
 }
 
 function usageOf(message: Anthropic.Beta.Messages.BetaMessage): Usage {

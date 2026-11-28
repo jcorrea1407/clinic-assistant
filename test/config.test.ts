@@ -8,7 +8,7 @@ describe("client config", () => {
   it("loads every registered client", async () => {
     const clients = await loadAllClients();
     expect(clients.map((c) => c.config.id)).toEqual(["upland"]);
-    expect(clients[0]!.config.model).toEqual({ provider: "anthropic", id: "claude-opus-5-5", effort: "low" });
+    expect(clients[0]!.config.model).toEqual({ provider: "openai", id: "gpt-6.2-sol", effort: "low" });
   });
 
   it("rejects a malformed front-desk inbox and names the client", async () => {
@@ -22,8 +22,13 @@ describe("client config", () => {
   });
 
   it("rejects an unknown model provider", async () => {
-    const model = { provider: "openai", id: "gpt-6.2-sol", effort: "low" };
+    const model = { provider: "mistral", id: "mistral-large", effort: "low" };
     await expect(loadClient(config({ model }))).rejects.toThrow(ConfigError);
+  });
+
+  it("accepts an OpenAI model", async () => {
+    const model = { provider: "openai", id: "gpt-6.2-sol", effort: "low" };
+    await expect(loadClient(config({ model }))).resolves.toMatchObject({ config: { model } });
   });
 
   it("reports a bad fact sheet as that client's error", async () => {
