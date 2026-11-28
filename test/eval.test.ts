@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import { readJsonl } from "../eval/jsonl.js";
 import { loadAllClients } from "../src/config/load.js";
 import { type EvalCase, checkAgainstFacts, judgeChecks, loadCases } from "../eval/cases.js";
 import { type CheckVerdict, type TurnRecord, gradeTurn } from "../eval/grade.js";
@@ -78,6 +82,19 @@ describe("grading", () => {
   it("fails an empty or unjudged reply", () => {
     const f3 = byId("F3");
     expect(gradeTurn(f3, turn({ reply: "" }), RED, judgeChecks(f3), undefined)).toMatchObject({ pass: 0, reply_ok: 0 });
+  });
+});
+
+describe("results files", () => {
+  it("skip a line cut short mid-write instead of failing the whole file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "eval-"));
+    const path = join(dir, "errors.jsonl");
+    writeFileSync(path, '{"prompt_id":"F3","rep":0}\n{"prompt_id":"A4","re\n\n');
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(readJsonl(path)).toEqual([{ prompt_id: "F3", rep: 0 }]);
+    expect(warn).toHaveBeenCalledWith(`${path}:2: not valid JSON, skipped`);
+    warn.mockRestore();
+    expect(readJsonl(join(dir, "missing.jsonl"))).toEqual([]);
   });
 });
 

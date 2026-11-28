@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { GROUPS, HARD_GATE_GROUPS, STANDARD_REPS, loadCases } from "./cases.js";
 import type { Grade } from "./grade.js";
+import { readJsonl } from "./jsonl.js";
 import { type UsageFields, costOf } from "./prices.js";
 
 // Reads every model's results and writes the comparison to
@@ -29,13 +30,6 @@ const VARIANTS = ["baseline", "v1", "v2", "v3"];
 const cases = loadCases();
 const groupOf = new Map(cases.map((c) => [c.id, c.group]));
 
-const readJsonl = <T>(path: string): T[] =>
-  existsSync(path)
-    ? readFileSync(path, "utf8")
-        .split("\n")
-        .filter((l) => l.trim())
-        .map((l) => JSON.parse(l) as T)
-    : [];
 
 const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}% (${n}/${d})` : "–");
 const money = (x: number | undefined) => (x === undefined ? "not measured" : `$${x.toFixed(4)}`);
@@ -74,7 +68,17 @@ for (const variant of VARIANTS) {
   // Rows for a case id that's no longer in cases.json are left out, with a warning.
   const stale = [...new Set(allRows.filter((r) => !groupOf.has(r.prompt_id)).map((r) => r.prompt_id))];
   if (stale.length) console.warn(`${variant}: skipping rows for cases no longer in cases.json: ${stale.join(", ")}`);
-  const rows = allRows.filter((r) => groupOf.has(r.prompt_id));
+  // Only the reps a full run makes, the first row for each (case, rep), and only
+  // turns a model answered (an older runner graded outages; run.ts re-runs them).
+  const seen = new Set<string>();
+  const rows = allRows.filter((r) => {
+    const key = `${r.prompt_id}#${r.rep}`;
+    if (!groupOf.has(r.prompt_id) || r.rep >= STANDARD_REPS || r.meta.calls.length === 0 || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const dropped = allRows.length - rows.length - allRows.filter((r) => !groupOf.has(r.prompt_id)).length;
+  if (dropped) console.warn(`${variant}: left out ${dropped} rows (rep ${STANDARD_REPS} or above, a duplicate, or no model call)`);
   if (!rows.length) continue;
   const graded = new Set(rows.map((r) => `${r.prompt_id}#${r.rep}`));
   // Unresolved errors: one per (case, rep) that failed and no later run graded.
@@ -105,9 +109,7 @@ for (const variant of VARIANTS) {
 
   const scored = rows.filter((r) => !HARD_GATE_GROUPS.includes(groupOf.get(r.prompt_id)!));
   const nonRedFlag = rows.filter((r) => !groupOf.get(r.prompt_id)!.startsWith("red-flag"));
-  // Cost and latency come only from turns where a model actually answered.
-  const answered = rows.filter((r) => r.meta.calls.length > 0);
-  const costs = answered.map(appCost);
+  const costs = rows.map(appCost);
   const costKnown = costs.every((c) => c !== undefined);
   const meanCost = costKnown && costs.length ? (costs as number[]).reduce((a, b) => a + b, 0) / costs.length : undefined;
   const judgeCost = rows.reduce<number | undefined>((sum, r) => {
@@ -118,7 +120,7 @@ for (const variant of VARIANTS) {
   const sum = (key: keyof Grade, rs = rows) => rs.reduce((n, r) => n + r.grade[key], 0);
 
   overview.push(
-    `| ${model} (${effort}) | ${rows.length}${errors.length ? `, ${errors.length} errors` : ""} | ${gate} | ${pct(sum("pass", scored), scored.length)} | ${pct(sum("false_red_flag", nonRedFlag), nonRedFlag.length)} | ${pct(sum("json_ok"), rows.length)} | ${rows.filter((r) => r.meta.failure_shown).length} | ${rows.filter((r) => r.meta.fallback).length} | ${money(meanCost)} | ${median(answered.map((r) => r.latency_s)).toFixed(1)}s |`,
+    `| ${model} (${effort}) | ${rows.length}${errors.length ? `, ${errors.length} errors` : ""} | ${gate} | ${pct(sum("pass", scored), scored.length)} | ${pct(sum("false_red_flag", nonRedFlag), nonRedFlag.length)} | ${pct(sum("json_ok"), rows.length)} | ${rows.filter((r) => r.meta.failure_shown).length} | ${rows.filter((r) => r.meta.fallback).length} | ${money(meanCost)} | ${median(rows.map((r) => r.latency_s)).toFixed(1)}s |`,
   );
   if (gate === "pass" && meanCost !== undefined && incompleteCases.length === 0) eligible.push({ model, cost: meanCost });
 
