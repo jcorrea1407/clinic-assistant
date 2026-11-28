@@ -7,7 +7,7 @@ import type { ModelConfig } from "../src/config/schema.js";
 import type { ChatMessage, ClassifyResult, ModelProvider, Usage } from "../src/model/provider.js";
 import { providerFor } from "../src/model/provider.js";
 import { buildSystemPrompt } from "../src/prompt/system.js";
-import { type EvalCase, HARD_GATE_GROUPS, checkAgainstFacts, judgeChecks, loadCases } from "./cases.js";
+import { type EvalCase, HARD_GATE_GROUPS, STANDARD_REPS, checkAgainstFacts, judgeChecks, loadCases } from "./cases.js";
 import { type CheckVerdict, type TurnRecord, gradeTurn } from "./grade.js";
 import { JudgeError, createJudge, judgeSystemPrompt } from "./judge.js";
 
@@ -35,7 +35,7 @@ const { values: args } = parseArgs({
   options: {
     model: { type: "string" },
     effort: { type: "string", default: "low" },
-    reps: { type: "string", default: "3" },
+    reps: { type: "string", default: String(STANDARD_REPS) },
     cases: { type: "string" },
     concurrency: { type: "string", default: "4" },
     "timeout-s": { type: "string", default: "300" },
@@ -62,6 +62,26 @@ try {
 
 const flowDir = join("eval", "runs", "model-comparison");
 const outDir = join(flowDir, entry.variant);
+const resultsPath = join(outDir, "results.jsonl");
+const errorsPath = join(outDir, "errors.jsonl");
+
+const readRows = (path: string) =>
+  existsSync(path)
+    ? readFileSync(path, "utf8")
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => JSON.parse(line) as { prompt_id: string; rep: number; effort?: string })
+    : [];
+
+// One directory per model, so a run at another effort would mix into it.
+// Checked before anything in the directory is written.
+const otherEffort = [...readRows(resultsPath), ...readRows(errorsPath)].find((row) => row.effort !== effort);
+if (otherEffort) {
+  console.error(`${outDir} holds ${otherEffort.effort ?? "unlabelled"}-effort rows. Move the whole directory aside before a ${effort}-effort run.`);
+  process.exit(1);
+}
+const done = new Set(readRows(resultsPath).map((row) => `${row.prompt_id}#${row.rep}`));
+
 mkdirSync(join(outDir, "traces"), { recursive: true });
 if (entry.variant !== "baseline") {
   writeFileSync(join(outDir, "change.md"), `${modelId} at ${effort} effort, in place of claude-opus-5-5\n`);
@@ -81,21 +101,6 @@ if (args.cases) {
   const wanted = new Set(args.cases.split(","));
   cases = cases.filter((c) => wanted.has(c.id));
   if (cases.length !== wanted.size) throw new Error(`Unknown case in --cases ${args.cases}`);
-}
-
-const resultsPath = join(outDir, "results.jsonl");
-const done = new Set<string>();
-if (existsSync(resultsPath)) {
-  for (const line of readFileSync(resultsPath, "utf8").split("\n")) {
-    if (!line.trim()) continue;
-    const row = JSON.parse(line) as { prompt_id: string; rep: number; effort: string };
-    // One directory per model, so a run at another effort would mix into it.
-    if (row.effort !== effort) {
-      console.error(`${resultsPath} holds ${row.effort}-effort rows; move it aside before a ${effort}-effort run.`);
-      process.exit(1);
-    }
-    done.add(`${row.prompt_id}#${row.rep}`);
-  }
 }
 
 /** Wraps the real provider to record each classify attempt and the reply's stop reason. */
@@ -180,12 +185,14 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
 
   const served = [...new Set(log.usages.map((u) => u.usage.model))];
   const fallback = served.some((m) => !servedByRequested(m)) || log.restarts > 0;
-  // Every classify call threw (an API error after the SDK's own retries): the
-  // visitor saw the fixed failure text, and that's graded like any other turn,
-  // so on a red-flag case it's a gate miss. Anything else without usage is a
-  // harness bug.
-  const allCallsThrew = log.classify.length > 0 && log.classify.every((a) => a.result === "error");
-  if (log.usages.length === 0 && !(allCallsThrew && failureShown)) throw new Error("No model call recorded usage");
+  // No call returned anything: an outage, a rate limit after the SDK's own
+  // retries, or a missing key. That says nothing about the model, so it goes to
+  // errors.jsonl and is retried on the next run, instead of being graded. Until
+  // it is, the summary shows the case as missing a rep, so the gate can't pass.
+  if (log.usages.length === 0) {
+    const allCallsThrew = log.classify.length > 0 && log.classify.every((a) => a.result === "error");
+    throw allCallsThrew ? new ServingError("every model call failed") : new Error("No model call recorded usage");
+  }
 
   // Judge every reply a visitor would read as the assistant's own words.
   const checks = judgeChecks(c);
@@ -210,8 +217,7 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
     stop_reason: log.replyStop ?? (turn.tier === "red-flag" ? "red_flag_fixed_message" : "no_reply"),
     grade,
     explanation,
-    // No response at all when every call threw; the requested model is the one that failed.
-    model: log.usages[0]?.usage.model ?? modelId,
+    model: log.usages[0]!.usage.model,
     requested_model: modelId,
     effort,
     usage: sumUsage(log.usages.map((u) => u.usage)),
@@ -263,8 +269,12 @@ function withTimeout<T>(run: (abandoned: { value: boolean }) => Promise<T>, ms: 
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
+/** Every model call in a turn failed, so there's nothing of the model's to grade. */
+class ServingError extends Error {}
+
 function failureClass(error: unknown): string {
   if (error instanceof JudgeError) return `judge-${error.kind}`;
+  if (error instanceof ServingError) return "serving-error";
   const message = error instanceof Error ? error.message : String(error);
   if (message.startsWith("timeout")) return "timeout";
   return "harness-or-serving";
@@ -290,8 +300,8 @@ async function work(max: number) {
         failed++;
         const message = error instanceof Error ? error.message : String(error);
         appendFileSync(
-          join(outDir, "errors.jsonl"),
-          `${JSON.stringify({ prompt_id: c.id, rep, class: failureClass(error), message, at: new Date().toISOString() })}\n`,
+          errorsPath,
+          `${JSON.stringify({ prompt_id: c.id, rep, effort, class: failureClass(error), message, at: new Date().toISOString() })}\n`,
         );
         console.log(`  ${c.id} rep${rep}: ERROR (${failureClass(error)}) ${message}`);
       }

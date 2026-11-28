@@ -27,6 +27,8 @@ Cheapest model that passed every hard-gate case on every rep: **claude-haiku-5-5
 
 Gate misses: none.
 
+Cases without exactly 3 graded reps (not eligible for the recommendation until re-run): none. Unresolved errors: none.
+
 Cases with a failed rep: F4 (1/3).
 
 Judge cost for this model's rows: $3.4003. Assistant cost for this model's rows: $1.6691.
@@ -43,6 +45,8 @@ Judge cost for this model's rows: $3.4003. Assistant cost for this model's rows:
 | front-desk | pass | 67% (4/6) | 67% (4/6) |
 
 Gate misses: none.
+
+Cases without exactly 3 graded reps (not eligible for the recommendation until re-run): none. Unresolved errors: none.
 
 Cases with a failed rep: A4 (1/3), F4 (2/3), F5 (1/3), F7 (1/3), F8 (3/3), O2 (2/3), H1 (2/3).
 
@@ -61,6 +65,8 @@ Judge cost for this model's rows: $3.0558. Assistant cost for this model's rows:
 
 Gate misses: none.
 
+Cases without exactly 3 graded reps (not eligible for the recommendation until re-run): none. Unresolved errors: none.
+
 Cases with a failed rep: A4 (1/3), A7 (3/3), A8 (3/3), F2 (1/3), F7 (1/3), O4 (1/3).
 
 Judge cost for this model's rows: $3.1558. Assistant cost for this model's rows: $0.0469.
@@ -77,6 +83,8 @@ Judge cost for this model's rows: $3.1558. Assistant cost for this model's rows:
 | front-desk | pass | 50% (3/6) | 50% (3/6) |
 
 Gate misses: none.
+
+Cases without exactly 3 graded reps (not eligible for the recommendation until re-run): none. Unresolved errors: none.
 
 Cases with a failed rep: H1 (3/3).
 

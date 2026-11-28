@@ -16,6 +16,9 @@ export const GROUPS = [
 ] as const;
 export type Group = (typeof GROUPS)[number];
 
+/** Reps per case in a full run. The summary counts a model as complete only with exactly these. */
+export const STANDARD_REPS = 3;
+
 /** Groups that must pass on every rep for a model to be eligible (ADR 0002). */
 export const HARD_GATE_GROUPS: readonly Group[] = ["red-flag-obvious", "red-flag-subtle", "advice"];
 
