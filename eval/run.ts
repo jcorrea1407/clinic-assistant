@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readJsonl } from "./jsonl.js";
+import { endWithNewline, readJsonl } from "./jsonl.js";
 import { parseArgs } from "node:util";
 import { type PractitionerLink, type Tier, runTurn } from "../src/chat/turn.js";
 import { loadAllClients } from "../src/config/load.js";
@@ -60,7 +60,10 @@ const reps = positiveInt("reps", args.reps);
 // More reps than a full run can never be summarised as complete, and resume can't remove them.
 if (reps > STANDARD_REPS) throw new Error(`--reps can be at most ${STANDARD_REPS} (STANDARD_REPS in eval/cases.ts)`);
 const concurrency = positiveInt("concurrency", args.concurrency);
-const timeoutMs = positiveInt("timeout-s", args["timeout-s"]) * 1000;
+const timeoutS = positiveInt("timeout-s", args["timeout-s"]);
+// Node fires any longer setTimeout after 1 ms, which would time out every case.
+if (timeoutS > 86_400) throw new Error("--timeout-s can be at most 86400 (a day)");
+const timeoutMs = timeoutS * 1000;
 
 try {
   process.loadEnvFile(".env");
@@ -82,14 +85,18 @@ const errorRows = readJsonl<StoredRow>(errorsPath);
 // they carried an effort are taken to match.
 const otherEffort = [...results, ...errorRows.filter((row) => row.effort !== undefined)].find((row) => row.effort !== effort);
 if (otherEffort) {
-  console.error(`${outDir} holds ${otherEffort.effort}-effort rows. Move the whole directory aside before a ${effort}-effort run.`);
+  console.error(`${outDir} holds ${otherEffort.effort ?? "unlabelled"}-effort rows. Move the whole directory aside before a ${effort}-effort run.`);
   process.exit(1);
 }
 // A row where no model call returned anything was graded by an earlier version
-// of this runner; it's an outage, not a result, so it's run again.
-const done = new Set(results.filter((row) => (row.meta?.calls?.length ?? 1) > 0).map((row) => `${row.prompt_id}#${row.rep}`));
+// of this runner; it's an outage, not a result, so it's run again. The summary
+// leaves out the same rows.
+const done = new Set(results.filter((row) => (row.meta?.calls?.length ?? 0) > 0).map((row) => `${row.prompt_id}#${row.rep}`));
 
 mkdirSync(join(outDir, "traces"), { recursive: true });
+// A killed run can leave a half-written last line. End it, so the first row
+// appended now starts on its own line instead of joining the broken one.
+for (const path of [resultsPath, errorsPath]) endWithNewline(path);
 if (entry.variant !== "baseline") {
   writeFileSync(join(outDir, "change.md"), `${modelId} at ${effort} effort, in place of claude-opus-5-5\n`);
 }
@@ -204,8 +211,10 @@ async function runCase(c: EvalCase, rep: number, abandoned: { value: boolean }) 
   // call or the reply stream threw. That says nothing about the model, so it
   // goes to errors.jsonl and is retried on the next run instead of being graded.
   // Until it is, the summary shows the case as missing a rep, so the gate can't
-  // pass. Failure text from output that didn't parse is the model's, and is graded.
-  const apiError = log.classify.some((a) => a.result === "error") || log.streamThrew;
+  // pass. Failure text from output that didn't parse, or a refusal, is the
+  // model's, and is graded. The failure text follows the last classify attempt,
+  // so only that attempt decides: an API error then a refusal is a refusal.
+  const apiError = log.classify.at(-1)?.result === "error" || log.streamThrew;
   if (failureShown && apiError) throw new ServingError("a model call failed, so the turn showed the failure text");
   if (log.usages.length === 0) throw new Error("No model call recorded usage");
 
@@ -284,7 +293,10 @@ function withTimeout<T>(run: (abandoned: { value: boolean }) => Promise<T>, ms: 
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Every model call in a turn failed, so there's nothing of the model's to grade. */
+/**
+ * The turn showed the failure text because of an API error (the last classify
+ * attempt or the reply stream threw), not because of anything the model wrote.
+ */
 class ServingError extends Error {}
 
 function failureClass(error: unknown): string {

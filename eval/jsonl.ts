@@ -1,4 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+
+/** Adds a newline if the file doesn't already end with one, so the next append starts a fresh line. */
+export function endWithNewline(path: string): void {
+  if (!existsSync(path)) return;
+  const text = readFileSync(path, "utf8");
+  if (text.length > 0 && !text.endsWith("\n")) appendFileSync(path, "\n");
+}
 
 /**
  * Reads a JSON-lines file, one object per non-empty line. A missing file is

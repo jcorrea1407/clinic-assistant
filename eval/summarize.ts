@@ -73,7 +73,7 @@ for (const variant of VARIANTS) {
   const seen = new Set<string>();
   const rows = allRows.filter((r) => {
     const key = `${r.prompt_id}#${r.rep}`;
-    if (!groupOf.has(r.prompt_id) || r.rep >= STANDARD_REPS || r.meta.calls.length === 0 || seen.has(key)) return false;
+    if (!groupOf.has(r.prompt_id) || r.rep >= STANDARD_REPS || !(r.meta?.calls?.length) || seen.has(key)) return false;
     seen.add(key);
     return true;
   });
@@ -85,7 +85,8 @@ for (const variant of VARIANTS) {
   const errors = [
     ...new Set(
       readJsonl<{ prompt_id: string; rep: number }>(join(flowDir, variant, "errors.jsonl"))
-        .filter((e) => groupOf.has(e.prompt_id))
+        // Reps a full run never makes can't be resolved, so they aren't counted.
+        .filter((e) => groupOf.has(e.prompt_id) && e.rep < STANDARD_REPS)
         .map((e) => `${e.prompt_id}#${e.rep}`)
         .filter((key) => !graded.has(key)),
     ),

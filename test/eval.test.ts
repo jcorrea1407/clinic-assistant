@@ -1,8 +1,8 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
-import { readJsonl } from "../eval/jsonl.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { endWithNewline, readJsonl } from "../eval/jsonl.js";
 import { loadAllClients } from "../src/config/load.js";
 import { type EvalCase, checkAgainstFacts, judgeChecks, loadCases } from "../eval/cases.js";
 import { type CheckVerdict, type TurnRecord, gradeTurn } from "../eval/grade.js";
@@ -86,6 +86,10 @@ describe("grading", () => {
 });
 
 describe("results files", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("skip a line cut short mid-write instead of failing the whole file", () => {
     const dir = mkdtempSync(join(tmpdir(), "eval-"));
     const path = join(dir, "errors.jsonl");
@@ -93,8 +97,23 @@ describe("results files", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(readJsonl(path)).toEqual([{ prompt_id: "F3", rep: 0 }]);
     expect(warn).toHaveBeenCalledWith(`${path}:2: not valid JSON, skipped`);
-    warn.mockRestore();
     expect(readJsonl(join(dir, "missing.jsonl"))).toEqual([]);
+  });
+
+  it("keep a row appended after a cut-off last line with no newline", () => {
+    const dir = mkdtempSync(join(tmpdir(), "eval-"));
+    const path = join(dir, "results.jsonl");
+    writeFileSync(path, '{"prompt_id":"F3","rep":0}\n{"prompt_id":"A4","re');
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    endWithNewline(path);
+    appendFileSync(path, '{"prompt_id":"F7","rep":0}\n');
+    expect(readJsonl(path)).toEqual([
+      { prompt_id: "F3", rep: 0 },
+      { prompt_id: "F7", rep: 0 },
+    ]);
+    // A file that already ends cleanly is left alone.
+    endWithNewline(path);
+    expect(readFileSync(path, "utf8").endsWith('"rep":0}\n')).toBe(true);
   });
 });
 
