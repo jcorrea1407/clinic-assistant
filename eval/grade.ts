@@ -14,7 +14,7 @@ export interface TurnRecord {
   ended: boolean;
   /** The fixed "something went wrong… call 911" text was shown. */
   failureShown: boolean;
-  /** Each classify attempt: ok, "invalid" (didn't parse or match) or "refusal". */
+  /** Each classify attempt: "ok", "invalid" (didn't parse or match), "refusal", or "error" (the call threw: an API error, not the model's output). */
   classifyAttempts: ("ok" | "invalid" | "refusal" | "error")[];
 }
 

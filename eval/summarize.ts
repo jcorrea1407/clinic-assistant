@@ -91,8 +91,13 @@ for (const variant of VARIANTS) {
     ),
   ];
   if (!rows.length) {
-    // A run where every attempt failed still shows up, as failed rather than missing.
-    if (errors.length) overview.push(`| ${variant} | 0, ${errors.length} errors | incomplete | – | – | – | – | – | not measured | – |`);
+    // A run where every attempt failed, or whose only rows await a re-run,
+    // still shows up, as incomplete rather than missing.
+    const waiting = allRows.filter((r) => groupOf.has(r.prompt_id)).length;
+    const label = allRows[0] ? `${allRows[0].requested_model} (${allRows[0].effort})` : variant;
+    if (errors.length || waiting) {
+      overview.push(`| ${label} | 0 graded, ${errors.length} errors, ${waiting} awaiting re-run | incomplete | – | – | – | – | – | not measured | – |`);
+    }
     continue;
   }
   const model = rows[0]!.requested_model;

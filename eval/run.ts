@@ -294,8 +294,9 @@ function withTimeout<T>(run: (abandoned: { value: boolean }) => Promise<T>, ms: 
 }
 
 /**
- * The turn showed the failure text because of an API error (the last classify
- * attempt or the reply stream threw), not because of anything the model wrote.
+ * The turn showed the failure text because of an API error, not because of
+ * anything the model wrote. Which failures count is decided by
+ * isServingFailure in grade.ts.
  */
 class ServingError extends Error {}
 
