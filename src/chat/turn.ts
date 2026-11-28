@@ -84,19 +84,25 @@ export function practitionersFor(facts: PublicFactSheet, concernSlug: string | n
   });
 }
 
+// Booking buttons appear only when the note lists practitioners. Every other
+// note says so, or the model points the visitor to buttons that aren't there
+// (the most common failure in the model comparison, portfolio #76).
+const NO_BUTTONS =
+  "No booking buttons are shown with this reply, so don't mention buttons. If the visitor wants to book, offer to pass a question to the front desk.";
+
 function replyNote(tier: Exclude<Tier, "red-flag">, practitioners: PractitionerLink[], concern: string | null): string {
   const list = practitioners.map((p) => `- ${p.label}`).join("\n");
   switch (tier) {
     case "concern":
       return practitioners.length
         ? `This message is a concern ("${concern}"). The practitioners for it, shown to the visitor as booking buttons:\n${list}`
-        : "This message is a concern that doesn't match any concern in the fact sheet. Say you can't assess symptoms, and offer to pass the question to the front desk.";
+        : `This message is a concern that doesn't match any concern in the fact sheet. Say you can't assess symptoms, and offer to pass the question to the front desk. ${NO_BUTTONS}`;
     case "advice-request":
       return practitioners.length
         ? `This message asks for treatment advice. Decline, then offer booking. The practitioners for it ("${concern}"), shown as booking buttons:\n${list}`
-        : "This message asks for treatment advice. Decline, then offer to book an appointment or to pass a question to the front desk.";
+        : `This message asks for treatment advice. Decline, then offer to pass a question to the front desk. ${NO_BUTTONS}`;
     case "question":
-      return "This message is a question. Answer it from the fact sheet only.";
+      return `This message is a question. Answer it from the fact sheet only. ${NO_BUTTONS}`;
   }
 }
 

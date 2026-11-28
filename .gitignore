@@ -4,3 +4,8 @@ node_modules/
 .env.*
 !.env.example
 coverage/
+
+# Eval output: transcripts and generated reports stay local
+eval/runs/**/traces/
+eval/runs/**/report.html
+eval/runs/**/trajectory/

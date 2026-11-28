@@ -5,11 +5,15 @@ const FactsSource = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local-json"), data: z.unknown() }),
 ]);
 
-const Model = z.strictObject({
-  provider: z.literal("anthropic"),
-  id: z.string().min(1),
-  effort: z.enum(["low", "medium", "high", "xhigh", "max"]),
-});
+const Effort = z.enum(["low", "medium", "high", "xhigh", "max"]);
+
+const Model = z.discriminatedUnion("provider", [
+  z.strictObject({ provider: z.literal("anthropic"), id: z.string().min(1), effort: Effort }),
+  // Upland runs on OpenAI (chosen in portfolio #76). Needs OPENAI_API_KEY.
+  // gpt-6.2-sol accepts every effort here, low to max (OpenAI's model page,
+  // checked 2026-11-28); another OpenAI model may accept fewer.
+  z.strictObject({ provider: z.literal("openai"), id: z.string().min(1), effort: Effort }),
+]);
 
 export const ClientConfigSchema = z.strictObject({
   /** Used in URLs and logs. */

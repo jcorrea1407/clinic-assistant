@@ -13,5 +13,6 @@ export default {
   frontDeskInbox: "frontdesk@upland.example",
   // Placeholder until Upland's brand is set in its Figma file.
   brandColour: "#2f6f5e",
-  model: { provider: "anthropic", id: "claude-opus-5-5", effort: "low" },
+  // Chosen by the model comparison (portfolio #76, eval/RESULTS.md). Needs OPENAI_API_KEY.
+  model: { provider: "openai", id: "gpt-6.2-sol", effort: "low" },
 } satisfies ClientConfigInput;

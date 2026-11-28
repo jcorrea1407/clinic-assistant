@@ -6,7 +6,8 @@ import { buildSystemPrompt } from "../src/prompt/system.js";
 
 // Runs one example conversation per tier against the real model and prints
 // what the visitor would see, plus token usage per call. Costs real money
-// (a few cents per run). Needs ANTHROPIC_API_KEY or `ant auth login`.
+// (a few cents per run). Needs the key for the client's model provider:
+// OPENAI_API_KEY for Upland, or ANTHROPIC_API_KEY for a Claude model.
 //
 //   npm run try            all examples
 //   npm run try -- concern only the examples whose name contains "concern"
@@ -19,11 +20,11 @@ const examples: { name: string; messages: string[] }[] = [
   { name: "not-in-fact-sheet", messages: ["Do you offer dry needling?"] },
 ];
 
-// Reads ANTHROPIC_API_KEY from .env (gitignored) if there is one.
+// Reads the API keys from .env (gitignored) if there is one.
 try {
   process.loadEnvFile(".env");
 } catch (error) {
-  // No .env: the SDK falls back to the environment or an `ant auth login` profile.
+  // No .env: the SDKs fall back to the environment (or, for Claude, an `ant auth login` profile).
   if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 }
 
